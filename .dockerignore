@@ -1,0 +1,5 @@
+# test directory must not be excluded because tsconfig.json includes test files in compilation
+.git
+node_modules
+dist
+.env*
