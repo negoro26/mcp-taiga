@@ -16,7 +16,7 @@ jobs:
       - name: Set up Node.js runtime
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: 'npm'
 
       - name: Install dependencies
@@ -36,6 +36,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
     steps:
       - name: Check out repository
@@ -44,8 +45,7 @@ jobs:
       - name: Set up Node.js runtime
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: 'https://registry.npmjs.org'
+          node-version: 24
           cache: 'npm'
 
       - name: Install dependencies
@@ -54,8 +54,7 @@ jobs:
       - name: Compile distribution files
         run: npm run build
 
-      # Prerequisite: NPM_TOKEN secret configured in GitHub repository secrets
+      # Publishes via npm trusted publishing (OIDC). Prerequisite: package configured
+      # on npmjs.com (Settings -> Trusted publishing) with this repository and workflow.
       - name: Publish package to npm
         run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
