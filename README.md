@@ -12,11 +12,10 @@ The server consolidates all capabilities into 6 op-dispatching tools designed fo
 
 ## Contents
 
-| | |
-| --- | --- |
-| [Features](#features) · [Requirements](#requirements-and-configuration) · [Quick Start](#quick-start) · [Local checkout](#running-from-a-local-checkout) | **Install:** [Claude Code](#claude-code) · [Claude Desktop](#claude-desktop) · [VS Code / Copilot](#vs-code-and-github-copilot) · [Cursor](#cursor) · [Windsurf](#windsurf) · [Cline / Roo / Kilo](#cline-roo-code-and-kilo-code) · [Continue.dev](#continuedev) |
-| [Zed](#zed) · [JetBrains](#jetbrains-ides) · [Gemini CLI](#gemini-cli) · [Codex CLI](#codex-cli) · [opencode](#opencode) · [Amp](#amp) | [HTTP transport & web clients](#remote-and-web-clients-http-transport) · [Docker](#containers) · [FAQ](#faq) · [Conventions](#conventions) |
-| [Why six tools](#why-six-tools) · [Tool reference](#tool-reference): [`projects`](#1-projects) · [`work`](#2-work) · [`sprints`](#3-sprints) · [`comments`](#4-comments) · [`attachments`](#5-attachments) · [`wiki`](#6-wiki) | [Reliability](#reliability-and-safety) · [Security](#security-considerations) · [Troubleshooting](#troubleshooting) · [Development](#development) · [Contributing](#contributing) · [Changelog](#changelog) · [License](#license) |
+- [Features](#features) · [Requirements](#requirements-and-configuration) · [Quick Start](#quick-start) · [Local checkout](#running-from-a-local-checkout) · [HTTP transport & web clients](#remote-and-web-clients-http-transport) · [Docker](#containers)
+- **Install:** [Claude Code](#claude-code) · [Claude Desktop](#claude-desktop) · [VS Code / Copilot](#vs-code-and-github-copilot) · [Cursor](#cursor) · [Windsurf](#windsurf) · [Cline / Roo / Kilo](#cline-roo-code-and-kilo-code) · [Continue.dev](#continuedev) · [Zed](#zed) · [JetBrains](#jetbrains-ides) · [Gemini CLI](#gemini-cli) · [Codex CLI](#codex-cli) · [opencode](#opencode) · [Amp](#amp) · [Pi](#pi) · [Oh My Pi](#oh-my-pi)
+- **Tools:** [Conventions](#conventions) · [Why six tools](#why-six-tools) · [Tool reference](#tool-reference): [`projects`](#1-projects) · [`work`](#2-work) · [`sprints`](#3-sprints) · [`comments`](#4-comments) · [`attachments`](#5-attachments) · [`wiki`](#6-wiki)
+- **Operations:** [Reliability](#reliability-and-safety) · [Security](#security-considerations) · [FAQ](#faq) · [Troubleshooting](#troubleshooting) · [Development](#development) · [Contributing](#contributing) · [Changelog](#changelog) · [License](#license)
 
 ## Features
 
@@ -401,6 +400,50 @@ Or declare `amp.mcpServers` in `~/.config/amp/settings.json` (workspace `.amp/se
 }
 ```
 
+### Pi
+
+Pi reads Claude-style MCP config from two scopes: `~/.pi/agent/mcp.json` (user) and `.mcp.json` or `mcp.json` in the working directory (project). Edit the user file:
+
+```json
+{
+  "mcpServers": {
+    "taiga": {
+      "command": "npx",
+      "args": ["-y", "mcp-taiga"],
+      "env": {
+        "TAIGA_USERNAME": "your_username",
+        "TAIGA_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+Remote servers use `"url"` plus `"transport": "http"`. Manage servers with `/mcp` inside a session (`/mcp add`, `/mcp list`, enable/disable per server).
+
+This repository ships its own `.mcp.json`, so launching pi inside a local checkout picks up the local build automatically (no credentials needed there — the server loads the repo `.env`).
+
+### Oh My Pi
+
+omp shares pi's agent core but has its own config root. Edit `~/.omp/agent/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "taiga": {
+      "command": "npx",
+      "args": ["-y", "mcp-taiga"],
+      "env": {
+        "TAIGA_USERNAME": "your_username",
+        "TAIGA_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+MCP servers bind when the session is constructed — restart omp after editing. Tools surface as `taiga_*` entries; project-level configs follow pi's discovery (including this repo's checked-in `.mcp.json`).
+
 ## Remote and Web Clients (HTTP Transport)
 
 Set `TAIGA_HTTP_PORT` to expose the same six tools over streamable HTTP instead of stdio — useful for clients that cannot spawn local processes, or for running one shared instance:
@@ -574,7 +617,7 @@ Manage wiki pages and page subscriptions within a project.
 ## FAQ
 
 **Which MCP clients can use it?**
-Anything that speaks stdio MCP — the [installation guide](#installation-and-configuration) covers fifteen of them with copy-paste configs — plus URL-based clients through the [HTTP transport](#remote-and-web-clients-http-transport).
+Anything that speaks stdio MCP — the [installation guide](#installation-and-configuration) covers seventeen of them with copy-paste configs — plus URL-based clients through the [HTTP transport](#remote-and-web-clients-http-transport).
 
 **Does it work with self-hosted Taiga?**
 Yes. Set `TAIGA_API_URL` to your instance including the `/api/v1` suffix (e.g. `https://taiga.example.com/api/v1`). Everything else behaves identically; if requests 404, see [Troubleshooting](#troubleshooting).
