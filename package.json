@@ -20,11 +20,12 @@
     "check": "tsc --noEmit",
     "lint": "oxlint src test",
     "start": "node dist/src/index.js",
-    "test": "npm run build && node dist/test/unitTest.js && node dist/test/protocolTest.js && node dist/test/apiContractTest.js",
+    "test": "npm run build && node dist/test/unitTest.js && node dist/test/protocolTest.js && node dist/test/apiContractTest.js && node dist/test/httpTest.js",
     "test:unit": "npm run build && node dist/test/unitTest.js",
     "test:protocol": "npm run build && node dist/test/protocolTest.js",
     "test:contract": "npm run build && node dist/test/apiContractTest.js",
     "test:integration": "npm run build && node dist/test/integration.js",
+    "test:http": "npm run build && node dist/test/httpTest.js",
     "prepublishOnly": "npm run check && npm run lint && npm test"
   },
   "dependencies": {
@@ -41,7 +42,7 @@
     "agile",
     "scrum"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/negoro26/mcp-taiga.git"
