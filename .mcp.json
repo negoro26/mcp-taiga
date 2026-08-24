@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "taiga": {
+      "command": "node",
+      "args": ["dist/src/index.js"],
+      "env": {}
+    }
+  }
+}
