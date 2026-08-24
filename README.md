@@ -10,6 +10,14 @@ Model Context Protocol (MCP) server for Taiga project management, written in Typ
 
 The server consolidates all capabilities into 6 op-dispatching tools designed for minimal token overhead and dense, human- and LLM-readable text responses.
 
+## Contents
+
+| | |
+| --- | --- |
+| [Features](#features) · [Requirements](#requirements-and-configuration) · [Quick Start](#quick-start) · [Local checkout](#running-from-a-local-checkout) | **Install:** [Claude Code](#claude-code) · [Claude Desktop](#claude-desktop) · [VS Code / Copilot](#vs-code-and-github-copilot) · [Cursor](#cursor) · [Windsurf](#windsurf) · [Cline / Roo / Kilo](#cline-roo-code-and-kilo-code) · [Continue.dev](#continuedev) |
+| [Zed](#zed) · [JetBrains](#jetbrains-ides) · [Gemini CLI](#gemini-cli) · [Codex CLI](#codex-cli) · [opencode](#opencode) · [Amp](#amp) | [HTTP transport & web clients](#remote-and-web-clients-http-transport) · [Docker](#containers) · [FAQ](#faq) · [Conventions](#conventions) |
+| [Why six tools](#why-six-tools) · [Tool reference](#tool-reference): [`projects`](#1-projects) · [`work`](#2-work) · [`sprints`](#3-sprints) · [`comments`](#4-comments) · [`attachments`](#5-attachments) · [`wiki`](#6-wiki) | [Reliability](#reliability-and-safety) · [Security](#security-considerations) · [Troubleshooting](#troubleshooting) · [Development](#development) · [Contributing](#contributing) · [Changelog](#changelog) · [License](#license) |
+
 ## Features
 
 - **Six tools, twenty-eight operation pairs** across projects, work items, sprints, comments, attachments, and wiki pages — the entire `tools/list` payload is ~10,493 characters (~2,800 tokens).
@@ -286,7 +294,7 @@ Add a custom context server in `settings.json` (**zed: open settings**):
 }
 ```
 
-### JetBrains IDEs (IntelliJ, PyCharm, WebStorm, ...)
+### JetBrains IDEs
 
 Open **Settings → Tools → AI Assistant → MCP** (or the dedicated MCP settings page in newer releases), click **Add**, choose *As JSON*, and paste:
 
@@ -562,6 +570,29 @@ Manage wiki pages and page subscriptions within a project.
 - The optional HTTP transport binds to loopback by default and enables DNS-rebinding protection; binding to a routable address prints a warning because traffic is unencrypted.
 - Attachment downloads never carry your bearer token off the Taiga hostname, refuse redirects, cap file size, and refuse to overwrite existing files.
 - Deletion surfaces are single-target by design; there are no batch deletes.
+
+## FAQ
+
+**Which MCP clients can use it?**
+Anything that speaks stdio MCP — the [installation guide](#installation-and-configuration) covers fifteen of them with copy-paste configs — plus URL-based clients through the [HTTP transport](#remote-and-web-clients-http-transport).
+
+**Does it work with self-hosted Taiga?**
+Yes. Set `TAIGA_API_URL` to your instance including the `/api/v1` suffix (e.g. `https://taiga.example.com/api/v1`). Everything else behaves identically; if requests 404, see [Troubleshooting](#troubleshooting).
+
+**Can I connect more than one Taiga account or instance?**
+Not within one server process — it holds exactly one credential set, read from the environment at startup. Register additional entries under `mcpServers` (e.g. `"taiga-work"`) with their own env values; each becomes an independent tool namespace like `mcp__taiga-work__work`.
+
+**Where does my password go?**
+From your env block into memory, and from there only to the configured Taiga host during the login exchange — never to command lines (which leak via process lists), logs, tool results, or attachment download hosts. See [Security Considerations](#security-considerations).
+
+**Is it read-only?**
+No: full create, update, link/unlink, and delete across work items, sprints, comments, attachments, and wiki pages. Sprint deletion and batch deletion are deliberately absent — see [Reliability and Safety](#reliability-and-safety).
+
+**Why only six tools when other MCP servers expose dozens?**
+Context-window economics: every tool definition is paid on every session start. See [Why Six Tools](#why-six-tools).
+
+**Something broke — where do I start?**
+[Troubleshooting](#troubleshooting) covers the common failure modes; beyond that, open a GitHub issue with the failing tool call and the server's stderr output.
 
 ## Troubleshooting
 
