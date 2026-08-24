@@ -36,11 +36,18 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "taiga",
     "project-management",
     "agile",
-    "scrum"
+    "scrum",
+    "kanban",
+    "issue-tracking",
+    "sprint",
+    "wiki",
+    "llm-tools",
+    "ai-agents"
   ],
   "license": "MIT",
   "repository": {
