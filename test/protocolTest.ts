@@ -106,7 +106,7 @@ check('work tool advertises destructiveHint: true, projects does not', () => {
 });
 
 check('tools/list payload serialisation budget is under 12000 characters', () => {
-  // 44 tools cost 63243 characters; this consolidated 6-tool surface costs about 9700 characters
+  // 44 single-purpose tools cost 63243 characters; this consolidated 6-tool surface costs about 10500 characters
   const serialized = JSON.stringify(tools);
   assert.ok(serialized.length < 12000, `tools/list payload exceeded budget: ${serialized.length} chars (budget 12000)`);
 });
