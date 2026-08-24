@@ -43,8 +43,8 @@ const description = `List, add, edit, or delete comments on issues, user stories
 | add | type, item, text | project |
 | edit | type, item, commentId, text | project |
 | delete | type, item, commentId | project |`;
-
-const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+// Per-tool annotation must reflect the most destructive op (see tools/work.ts): this tool deletes comments.
+const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
 
 const handler = async ({ op, type, item, project, text, commentId, includeDeleted }: Args): Promise<CallToolResult> => {
       if (!type) {

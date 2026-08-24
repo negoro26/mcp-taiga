@@ -46,8 +46,8 @@ const description = `Create, inspect, update, delete, or watch wiki pages in a p
 | update | page, content | project | Update wiki page content (OCC versioned); project needed if page is slug |
 | delete | page | project | Delete wiki page permanently; project needed if page is slug |
 | watch | page | project, watch | Watch (default) or unwatch wiki page; project needed if page is slug |`;
-
-const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+// Per-tool annotation must reflect the most destructive op (see tools/work.ts): this tool deletes wiki pages permanently.
+const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
 
 const handler = async ({ op, project, page, content, watch }: Args): Promise<CallToolResult> => {
       if (op === 'list') {

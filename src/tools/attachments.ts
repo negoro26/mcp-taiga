@@ -97,8 +97,8 @@ const description = `List, upload, download, or delete attachments across work i
 | upload | type, item, filePath OR fileContent | project, fileName, mimeType, description | Upload file to Taiga host from local path (harness resolves local:// URIs) or base64 |
 | download | type, attachmentId | savePath | Fetch metadata and bytes; writes to savePath when given |
 | delete | type, attachmentId | | Delete attachment by ID |`;
-
-const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+// Per-tool annotation must reflect the most destructive op (see tools/work.ts): this tool deletes attachments permanently.
+const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
 
 const handler = async ({
   op,
