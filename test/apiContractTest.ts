@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-/**
- * API Contract Test Suite: verifies that every MCP tool sends the expected HTTP requests
- * and handles responses according to the Taiga REST API specification without a live Taiga instance.
- */
 
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -11,9 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { z } from 'zod';
 import { allTools } from '../src/tools/index.js';
 import { isNumericId } from '../src/taiga.js';
@@ -141,7 +136,6 @@ function resultText(result: CallToolResult): string {
 const requests: RecordedRequest[] = [];
 let serverPort = 0;
 let throttleRecoverHits = 0;
-// 1. In-process mock Taiga HTTP server
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url ?? '/', `http://${req.headers.host || '127.0.0.1'}`);
   const pathname = parsedUrl.pathname;
@@ -150,7 +144,6 @@ const server = http.createServer(async (req, res) => {
 
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
-    // SAFETY: IncomingMessage stream chunks are Buffer instances
     chunks.push(chunk as Buffer);
   }
   const rawBuffer = Buffer.concat(chunks);
@@ -158,7 +151,6 @@ const server = http.createServer(async (req, res) => {
   let body: RecordedBody | null = null;
   if (rawBody && req.headers['content-type']?.includes('application/json')) {
     try {
-      // SAFETY: JSON.parse of application/json payload parsed to RecordedBody
       body = JSON.parse(rawBody) as RecordedBody;
     } catch {
       body = null;
@@ -179,7 +171,6 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(data));
   };
 
-  // Media download mock
   if (pathname === '/media/redirect-source.txt') {
     res.writeHead(302, { Location: `http://127.0.0.1:${serverPort}/media/redirect-target.txt` });
     res.end();
@@ -205,7 +196,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Auth endpoint
   if (pathname === '/api/v1/auth' && req.method === 'POST') {
     sendJson(200, {
       auth_token: 'contract-test-token',
@@ -217,13 +207,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Current user (deliberately no full_name property, only full_name_display)
   if (pathname === '/api/v1/users/me' && req.method === 'GET') {
     sendJson(200, { id: 1, username: 'tester', full_name_display: 'Tester User' });
     return;
   }
 
-  // Users (project members)
   if (pathname === '/api/v1/users' && req.method === 'GET') {
     sendJson(200, [
       { id: 1, username: 'tester', full_name_display: 'Tester User' },
@@ -233,7 +221,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Projects
   if (pathname === '/api/v1/projects/by_slug' && query['slug'] === 'throttle-recover' && req.method === 'GET') {
     throttleRecoverHits += 1;
     if (throttleRecoverHits === 1) {
@@ -356,7 +343,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Taxonomies
   if (pathname === '/api/v1/issue-statuses' && req.method === 'GET') {
     sendJson(200, [
       { id: 11, name: 'New' },
@@ -439,7 +425,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Milestones (Sprints)
   if (pathname === '/api/v1/milestones' && req.method === 'GET') {
     sendJson(200, [
       {
@@ -506,7 +491,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Issues
   if (pathname === '/api/v1/issues/by_ref' && req.method === 'GET') {
     sendJson(200, {
       id: 101,
@@ -628,7 +612,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Issue 102 with a long description (> 2000 chars) for truncation testing
   if (pathname === '/api/v1/issues/102' && req.method === 'GET') {
     sendJson(200, {
       id: 102,
@@ -664,7 +647,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // User Stories (multi-assignee: assigned_users [1, 2], assigned_to_extra_info without full_name)
   if (pathname === '/api/v1/userstories/by_ref' && req.method === 'GET') {
     const requestedRef = Number(query['ref'] || 2);
     if (requestedRef === 20) {
@@ -824,7 +806,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Tasks
   if (pathname === '/api/v1/tasks/by_ref' && req.method === 'GET') {
     sendJson(200, {
       id: 301,
@@ -906,7 +887,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Epics
   if (pathname === '/api/v1/epics/by_ref' && req.method === 'GET') {
     sendJson(200, {
       id: 401,
@@ -1042,7 +1022,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Wiki
   if (pathname === '/api/v1/wiki/by_slug' && req.method === 'GET') {
     sendJson(200, {
       id: 601,
@@ -1156,7 +1135,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // History & Comments
   if (
     segments.length === 6 &&
     segments[0] === 'api' &&
@@ -1204,7 +1182,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Attachments (issues, userstories, tasks, epics, wiki)
   const attachmentEntities = { issues: true, userstories: true, tasks: true, epics: true, wiki: true } satisfies Record<string, true>;
   if (
     segments[0] === 'api' &&
@@ -1309,14 +1286,12 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Default fallback 404
   sendJson(404, { _error_message: `Mock endpoint not found: ${req.method ?? 'GET'} ${pathname}` });
 });
 
 await new Promise<void>((resolve) => {
   server.listen(0, '127.0.0.1', () => {
     const addr = server.address();
-    // SAFETY: TCP server.address() returns AddressInfo with port when listening
     const info = addr as AddressInfo | null;
     if (info && 'port' in info) {
       serverPort = info.port;
@@ -1360,8 +1335,7 @@ async function runToolCheck(
 ): Promise<CallToolResult> {
   try {
     const result = await client.request(
-      { method: 'tools/call', params: { name, arguments: args } },
-      CallToolResultSchema,
+      { method: 'tools/call', params: { name, arguments: args } }
     );
 
     if (expectError) {
@@ -1394,7 +1368,6 @@ async function runContractAssertion(name: string, fn: () => void | Promise<void>
   }
 }
 
-// Temporary file for download testing
 const tmpDownloadPath = path.join(os.tmpdir(), `taiga-download-test-${Date.now()}.txt`);
 
 let listProjectsRes!: CallToolResult;
@@ -1412,6 +1385,7 @@ let listAttachmentsRes!: CallToolResult;
 let listWikiRes!: CallToolResult;
 let getLongDescRes!: CallToolResult;
 let downloadNoSaveRes!: CallToolResult;
+let downloadWithContentRes!: CallToolResult;
 let downloadWithSaveRes!: CallToolResult;
 let downloadForeignHostRes!: CallToolResult;
 let downloadExistingFileRes!: CallToolResult;
@@ -1433,13 +1407,10 @@ let deleteNoItemRes!: CallToolResult;
 let deleteWithItemsRes!: CallToolResult;
 
 try {
-  // --- 1. PROJECTS TOOL ---
   await runToolCheck('projects', { op: 'whoami' });
   listProjectsRes = await runToolCheck('projects', { op: 'list' });
   await runToolCheck('projects', { op: 'get', project: 'project-1' });
 
-  // --- 2. WORK TOOL ---
-  // Work: issue
   listIssuesRes = await runToolCheck('work', {
     op: 'list',
     type: 'issue',
@@ -1500,7 +1471,6 @@ try {
     status: 'In progress',
   });
 
-  // Work: story
   listUserStoriesRes = await runToolCheck('work', {
     op: 'list',
     type: 'story',
@@ -1551,7 +1521,6 @@ try {
     parent: '401',
   });
 
-  // Work: task
   listTasksRes = await runToolCheck('work', {
     op: 'list',
     type: 'task',
@@ -1585,7 +1554,6 @@ try {
     status: 'In progress',
   });
 
-  // Work: epic
   listEpicsRes = await runToolCheck('work', {
     op: 'list',
     type: 'epic',
@@ -1616,7 +1584,6 @@ try {
     color: '#00FF00',
   });
 
-  // Work: batch create via items
   await runToolCheck('work', {
     op: 'create',
     type: 'issue',
@@ -1671,7 +1638,6 @@ try {
     ],
   });
 
-  // Work: delete
   deleteIssueRes = await runToolCheck('work', {
     op: 'delete',
     type: 'issue',
@@ -1699,7 +1665,6 @@ try {
     project: 'project-1',
   });
 
-  // --- 3. SPRINTS TOOL ---
   listSprintsRes = await runToolCheck('sprints', { op: 'list', project: 'project-1' });
   getSprintRes = await runToolCheck('sprints', { op: 'get', project: 'project-1', sprint: 'Sprint 1' });
   await runToolCheck('sprints', {
@@ -1711,7 +1676,6 @@ try {
   });
   sprintStatsRes = await runToolCheck('sprints', { op: 'stats', sprint: '10' });
 
-  // --- 4. COMMENTS TOOL ---
   listCommentsRes = await runToolCheck('comments', { op: 'list', type: 'issue', item: '101' });
   await runToolCheck('comments', {
     op: 'add',
@@ -1733,7 +1697,6 @@ try {
     commentId: '11111111-1111-1111-1111-111111111111',
   });
 
-  // --- 5. ATTACHMENTS TOOL ---
   listAttachmentsRes = await runToolCheck('attachments', { op: 'list', type: 'issue', item: '101' });
   await runToolCheck('attachments', {
     op: 'upload',
@@ -1753,6 +1716,12 @@ try {
     op: 'download',
     type: 'issue',
     attachmentId: '701',
+  });
+  downloadWithContentRes = await runToolCheck('attachments', {
+    op: 'download',
+    type: 'issue',
+    attachmentId: '701',
+    includeContent: true,
   });
   downloadWithSaveRes = await runToolCheck('attachments', {
     op: 'download',
@@ -1826,7 +1795,6 @@ try {
     attachmentId: '701',
   });
 
-  // --- 6. WIKI TOOL ---
   listWikiRes = await runToolCheck('wiki', { op: 'list', project: 'project-1' });
   await runToolCheck('wiki', {
     op: 'create',
@@ -1857,7 +1825,6 @@ try {
     project: 'project-1',
   });
 
-  // --- ERROR / GUARD TESTS ---
   unknownOpRes = await runToolCheck(
     'projects',
     { op: 'invalid_op' },
@@ -1915,7 +1882,6 @@ try {
     },
     { expectError: true },
   );
-  // --- 3b. RATE LIMITING, CACHING, AND OCC UPDATE CHECKS ---
   const throttleRecoverRes = await runToolCheck('projects', { op: 'get', project: 'throttle-recover' });
 
   const giveupStart = Date.now();
@@ -1957,7 +1923,6 @@ try {
     assignee: 'alex',
   });
 
-  // --- 3c. STORY POINTS RESOLUTION & CACHING CHECKS ---
   const unestimatedStoryRes = await runToolCheck('work', {
     op: 'create',
     type: 'story',
@@ -1986,7 +1951,6 @@ try {
     (r) => r.method === 'POST' || r.method === 'PATCH' || r.method === 'PUT' || r.method === 'DELETE',
   ).length;
 
-  // --- 3d. WORK UPDATE PARENT REGRESSION CHECKS ---
   const taskReparentNumericRes = await runToolCheck('work', {
     op: 'update',
     type: 'task',
@@ -2052,7 +2016,6 @@ try {
   await new Promise<void>((resolve) => {
     leakServer.listen(0, '127.0.0.1', () => {
       const addr = leakServer.address();
-      // SAFETY: TCP server.address() returns AddressInfo with port when listening
       const info = addr as AddressInfo | null;
       if (info && 'port' in info) {
         leakPort = info.port;
@@ -2080,8 +2043,7 @@ try {
   try {
     await leakClient.connect(leakTransport);
     leakToolRes = await leakClient.request(
-      { method: 'tools/call', params: { name: 'projects', arguments: { op: 'list' } } },
-      CallToolResultSchema,
+      { method: 'tools/call', params: { name: 'projects', arguments: { op: 'list' } } }
     );
 
     const prevApiUrl = process.env['TAIGA_API_URL'];
@@ -2099,20 +2061,18 @@ try {
     try {
       await leakClient.close();
     } catch {
-      // ignore
     }
     leakServer.close();
   }
-  // --- 4. ASSERT ON RECORDED REQUESTS & MATRIX COVERAGE ---
 
   await runContractAssertion('every (tool, op) pair in allTools was exercised', () => {
     const expectedMatrix = new Set<string>();
     for (const tool of allTools) {
-      const opSchema = tool.inputSchema['op'];
-      if (opSchema instanceof z.ZodEnum) {
-        for (const op of opSchema.options) {
-          expectedMatrix.add(`${tool.name}:${String(op)}`);
-        }
+      const properties = z.toJSONSchema(tool.inputSchema).properties ?? {};
+      const opProperty = properties.op;
+      const operations = opProperty && opProperty !== true && Array.isArray(opProperty.enum) ? opProperty.enum : [];
+      for (const op of operations) {
+        expectedMatrix.add(`${tool.name}:${String(op)}`);
       }
     }
     assert.ok(expectedMatrix.size > 0, 'derived expected op matrix must not be empty');
@@ -2285,7 +2245,6 @@ try {
       ['wiki list', listWikiRes],
     ];
 
-    // 1. Every list result's first line matches list header contract
     for (const [label, res] of allListResponses) {
       assert.notEqual(res.isError, true, `${label} must succeed without isError`);
       const text = resultText(res);
@@ -2294,14 +2253,12 @@ try {
         isListHeader(firstLine),
         `${label} first line "${firstLine}" must match list header contract`,
       );
-      // Ensure header NEVER matches the old record-like format
       assert.ok(
         !isDigitRecord(firstLine),
         `${label} header "${firstLine}" must never start with a number`,
       );
     }
 
-    // 2. For a stubbed multi-record list (listIssuesRes has 3 issues), every line after the first parses as a record
     const issueLines = resultText(listIssuesRes).split('\n');
     assert.equal(issueLines.length, 4, `expected 1 header + 3 record lines, got ${issueLines.length}`);
     assert.ok(isListHeader(issueLines[0] ?? '') && issueLines[0]?.endsWith(': 3'), `expected header "issues in project-1: 3", got "${issueLines[0]}"`);
@@ -2317,7 +2274,6 @@ try {
       );
     }
 
-    // 3. Limit smaller than the stub's row count renders N of M with true total, and row count equals N
     const limitText = resultText(listWithLimitRes);
     const limitLines = limitText.split('\n');
     assert.equal(limitLines.length, 2, `expected 1 header + 1 record line with limit 1, got ${limitLines.length}`);
@@ -2330,7 +2286,6 @@ try {
       `limit record line "${limitLines[1]}" must parse as a record`,
     );
 
-    // 4. An empty list renders exactly one line, ends in ": 0", and is NOT an error
     assert.notEqual(listEmptyRes.isError, true, 'empty list must not be an error');
     const emptyText = resultText(listEmptyRes);
     const emptyLines = emptyText.split('\n');
@@ -2359,7 +2314,6 @@ try {
   });
 
   await runContractAssertion('new surface guards: unknown op, missing required arg, limit truncation, long desc truncation, download with/without savePath', async () => {
-    // 1. Unknown op returns isError: true with message
     assert.equal(unknownOpRes.isError, true, 'unknown op should return isError: true');
     const unknownOpText = resultText(unknownOpRes);
     assert.ok(
@@ -2370,37 +2324,32 @@ try {
       `expected error about unknown op: ${unknownOpText}`,
     );
 
-    // 2. Missing required arg returns isError: true with message
     assert.equal(missingArgRes.isError, true, 'missing arg should return isError: true');
     const missingArgText = resultText(missingArgRes);
     assert.ok(missingArgText.includes('Project ID') || missingArgText.includes('required'), `expected error about required project arg: ${missingArgText}`);
 
-    // 3. Unknown member lists available usernames
     assert.equal(unknownMemberRes.isError, true, 'unknown member should return isError: true');
     const unknownMemberText = resultText(unknownMemberRes);
     assert.ok(unknownMemberText.includes('Available usernames: tester, alex, jsmith'), `expected error listing available usernames: ${unknownMemberText}`);
 
-    // 4. Limit truncates rendered rows
     const limitText = resultText(listWithLimitRes);
     const limitLines = limitText.split('\n').filter((l) => l.trim().startsWith('#'));
     assert.equal(limitLines.length, 1, `expected exactly 1 rendered item with limit: 1, got ${limitLines.length}`);
 
-    // 5. Work get description > 2000 chars is truncated with marker
     const longDescText = resultText(getLongDescRes);
     assert.ok(longDescText.includes('…(truncated)'), 'description over 2000 chars must be truncated with …(truncated)');
 
-    // 6. Attachments download without savePath returns useful text naming the file
     const noSaveText = resultText(downloadNoSaveRes);
     assert.ok(noSaveText.includes('test-attachment.txt'), 'download without savePath must name the file');
     assert.ok(noSaveText.includes('savePath'), 'download without savePath must note savePath is needed');
+    assert.equal(downloadNoSaveRes.content.filter((block) => block.type === 'resource').length, 0, 'metadata-only download must not include file bytes');
+    assert.equal(downloadWithContentRes.content.filter((block) => block.type === 'resource').length, 1, 'includeContent download must include file bytes');
 
-    // 7. Attachments download with savePath writes bytes to disk and reports path
     const withSaveText = resultText(downloadWithSaveRes);
     assert.ok(withSaveText.includes(tmpDownloadPath), 'download with savePath must report the destination path');
     const writtenData = await readFile(tmpDownloadPath, 'utf8');
     assert.equal(writtenData, 'attachment-file-content', 'downloaded file content must match mock payload');
 
-    // 8. Attachments download refuses foreign hostname and records no foreign request
     assert.equal(downloadForeignHostRes.isError, true, 'download from foreign host must fail with isError: true');
     const foreignHostText = resultText(downloadForeignHostRes);
     assert.ok(foreignHostText.includes('foreign.example.com'), 'error must name the foreign hostname');
@@ -2410,7 +2359,6 @@ try {
     );
     assert.equal(foreignRequestRecorded, false, 'stub must record no request to foreign media host');
 
-    // 9. Attachments download refuses to overwrite existing file
     assert.equal(downloadExistingFileRes.isError, true, 'download to existing file must fail with isError: true');
     const existingFileText = resultText(downloadExistingFileRes);
     assert.ok(
@@ -2424,7 +2372,6 @@ try {
       'existing file content must not be modified',
     );
 
-    // 10. Attachments download protocol allow-list: file: URL rejected before hostname check
     assert.equal(downloadFileProtocolRes.isError, true, 'download with file: protocol must fail with isError: true');
     const fileProtoText = resultText(downloadFileProtocolRes);
     assert.ok(fileProtoText.includes('unsupported protocol "file:"'), 'error must name unsupported protocol file:');
@@ -2434,7 +2381,6 @@ try {
     );
     assert.equal(fileReqRecorded, false, 'stub must record no request to file URL after metadata fetch');
 
-    // 11. Attachments download protocol allow-list: data: URL rejected
     assert.equal(downloadDataProtocolRes.isError, true, 'download with data: protocol must fail with isError: true');
     const dataProtoText = resultText(downloadDataProtocolRes);
     assert.ok(dataProtoText.includes('unsupported protocol "data:"'), 'error must name unsupported protocol data:');
@@ -2444,14 +2390,12 @@ try {
     );
     assert.equal(dataReqRecorded, false, 'stub must record no request to data URL after metadata fetch');
 
-    // 12. Attachments download transfer bounds: redirect refusal (maxRedirects: 0)
-    assert.equal(downloadRedirectRes.isError, true, 'download following redirect must fail with isError: true due to maxRedirects: 0');
+    assert.equal(downloadRedirectRes.isError, true, "download following redirect must fail with isError: true due to redirect: 'error'");
     const redirectSourceRequests = requests.filter((r) => r.path === '/media/redirect-source.txt');
     assert.equal(redirectSourceRequests.length, 1, 'stub must record exactly one request to redirect source');
     const redirectTargetRequests = requests.filter((r) => r.path === '/media/redirect-target.txt');
     assert.equal(redirectTargetRequests.length, 0, 'stub must record zero requests to redirect target');
 
-    // 13. Attachments download transfer bounds: size cap exceeds MAX_ATTACHMENT_BYTES
     assert.equal(downloadOversizedRes.isError, true, 'download of oversized attachment must fail with isError: true');
   });
 
@@ -2478,7 +2422,6 @@ try {
       assert.ok(text.includes(`id=${id}`), `delete ${type} response must include id=${id}: "${text}"`);
       assert.ok(text.includes('permanent'), `delete ${type} response must include "permanent": "${text}"`);
 
-      // Verify recorded requests: method DELETE, exact per-type path, never #ref, preceded by GET
       const deleteIdx = requests.findIndex((r) => r.method === 'DELETE' && r.path === expectedPath);
       assert.ok(deleteIdx !== -1, `expected DELETE request to ${expectedPath}`);
 
@@ -2486,7 +2429,6 @@ try {
       assert.ok(getIdx !== -1, `expected GET ${expectedPath} to precede DELETE ${expectedPath}`);
     }
 
-    // Ensure no DELETE requests with #ref or mismatched collection paths exist
     const invalidDeletes = requests.filter(
       (r) => r.method === 'DELETE' && (r.path.includes('#') || r.path.includes('undefined')),
     );
@@ -2494,7 +2436,6 @@ try {
   });
 
   await runContractAssertion('work op:delete resolves #ref to numeric ID and guards against missing item or batch items', () => {
-    // 1. #ref resolution
     assert.notEqual(deleteByRefRes.isError, true, 'work delete by #ref must succeed');
     const byRefText = resultText(deleteByRefRes);
     assert.ok(byRefText.includes('#1'), `delete by #ref response must include ref #1: "${byRefText}"`);
@@ -2507,7 +2448,6 @@ try {
     assert.equal(byRefGet.query['project'], '1', 'by_ref query must include resolved project ID');
     assert.equal(byRefGet.query['ref'], '1', 'by_ref query must include ref');
 
-    // 2. Delete without item
     assert.equal(deleteNoItemRes.isError, true, 'delete without item must return isError: true');
     const noItemText = resultText(deleteNoItemRes);
     assert.ok(
@@ -2515,7 +2455,6 @@ try {
       `delete without item must name required arg: "${noItemText}"`,
     );
 
-    // 3. Delete with items (batch refusal)
     assert.equal(deleteWithItemsRes.isError, true, 'delete with items must return isError: true');
     const batchText = resultText(deleteWithItemsRes);
     assert.ok(
@@ -2523,7 +2462,6 @@ try {
       `delete with items must mention batch is create-only: "${batchText}"`,
     );
   });
-  // --- Dedicated Rate-Limiting & Caching & Update assertions ---
   await runContractAssertion('rate limit 429 with Retry-After: 0 retries and succeeds on second hit', () => {
     assert.notEqual(throttleRecoverRes.isError, true, 'throttle recover tool call must succeed');
     const recoverRequests = requests.filter(
@@ -2605,8 +2543,6 @@ try {
       `direct error message must not contain password: ${directAuthError.message}`,
     );
 
-    // Every field is flattened to a string so the whole chain, including Taiga's response body,
-    // is searchable for the canary. `detail` is stringified rather than nested for that reason.
     interface ErrorFrame {
       name: string;
       message: string;
@@ -2617,8 +2553,6 @@ try {
     const errorChain: ErrorFrame[] = [];
     let curr: Error | undefined = directAuthError;
     while (curr instanceof Error) {
-      // SAFETY: every error thrown by src/api.ts is an ApiError, which is an Error carrying
-      // optional `status` and `detail`; reading them off a plain Error yields undefined.
       const apiErr = curr as ApiError;
       errorChain.push({
         name: curr.name,
@@ -2681,7 +2615,6 @@ try {
     assert.ok(pointsPayload !== undefined && pointsPayload !== null, 'PATCH body must contain points');
     assert.equal(Number.isFinite(pointsPayload), false, 'points must not be a number');
     assert.equal(Array.isArray(pointsPayload), false, 'points must not be an array');
-    // SAFETY: points is verified to be non-primitive and non-array object
     const pointsMap = pointsPayload as Record<string, number>;
     const keys = Object.keys(pointsMap);
     assert.deepEqual(keys, ['133'], 'points must have single key equal to computable role ID "133"');
@@ -2697,7 +2630,6 @@ try {
     assert.ok(create3Req.body, 'expected create3Req.body');
     assert.equal(Number.isFinite(create3Req.body.points), false, 'points: 3 must not send scalar number');
     assert.equal(Array.isArray(create3Req.body.points), false, 'points must not be an array');
-    // SAFETY: points is verified to be non-primitive and non-array object
     const create3Points = create3Req.body.points as Record<string, number>;
     assert.deepEqual(Object.keys(create3Points), ['133'], 'create points must have single key "133"');
     assert.equal(create3Points['133'], 222, 'points: 3 must resolve to point-row ID 222');
@@ -2710,7 +2642,6 @@ try {
     assert.ok(unestimatedReq, 'expected POST /api/v1/userstories for Unestimated Story');
     assert.ok(unestimatedReq.body, 'expected unestimatedReq.body');
     assert.equal(Number.isFinite(unestimatedReq.body.points), false, 'points: "?" must not send scalar');
-    // SAFETY: points is verified to be non-primitive and non-array object
     const unestimatedPoints = unestimatedReq.body.points as Record<string, number>;
     assert.deepEqual(Object.keys(unestimatedPoints), ['133'], 'unestimated points must have single key "133"');
     assert.equal(unestimatedPoints['133'], 217, 'points: "?" must resolve to point-row ID 217');
@@ -2849,7 +2780,6 @@ try {
       await rm(tmpExistingDir, { recursive: true, force: true });
     }
   } catch {
-    // ignore
   }
   await client.close();
   server.close();

@@ -1,30 +1,12 @@
 import { z } from 'zod';
 import type { CallToolResult, ItemTypeKey, RegisteredTool, TaigaHistoryEntry, TaigaWikiPage, TaigaWorkItem, ToolAnnotations } from '../types.js';
 import { get, post } from '../api.js';
-import { isNumericId, itemType, patchItem, resolveItem, resolveProjectId } from '../taiga.js';
+import { itemType, patchItem, resolveItem, resolveWikiPage } from '../taiga.js';
 import { commentLine, listing } from '../format.js';
 import { createSuccessResponse, guard } from '../utils.js';
 import { SUCCESS_MESSAGES } from '../constants.js';
 
-/**
- * Resolve a wiki page by database ID or slug.
- */
-async function resolveWikiTarget(
-  identifier: string | number,
-  projectIdentifier?: string | number,
-): Promise<TaigaWikiPage> {
-  const raw = String(identifier).trim();
-  if (isNumericId(raw)) {
-    return get<TaigaWikiPage>(`/wiki/${raw}`);
-  }
-  if (!projectIdentifier) {
-    throw new Error('Project ID or slug is required when resolving a wiki page by slug.');
-  }
-  const project = await resolveProjectId(projectIdentifier);
-  return get<TaigaWikiPage>('/wiki/by_slug', { slug: raw, project });
-}
-
-const inputSchema = {
+const inputSchema = z.object({
   op: z.enum(['list', 'add', 'edit', 'delete']).describe('Operation to perform'),
   type: z.enum(['issue', 'story', 'user_story', 'task', 'epic', 'wiki']).optional().describe('Item type'),
   item: z.union([z.number(), z.string()]).optional().describe('Item ID, #reference, or wiki slug'),
@@ -32,9 +14,9 @@ const inputSchema = {
   text: z.string().optional().describe('Comment markdown text (add, edit)'),
   commentId: z.string().optional().describe('Comment UUID (edit, delete)'),
   includeDeleted: z.boolean().optional().describe('Include soft-deleted comments (list)'),
-};
+});
 
-type Args = z.output<z.ZodObject<typeof inputSchema>>;
+type Args = z.output<typeof inputSchema>;
 
 const description = `List, add, edit, or delete comments on issues, user stories, tasks, epics, and wiki pages. Note: Taiga soft-deletes comments on delete.
 
@@ -43,8 +25,7 @@ const description = `List, add, edit, or delete comments on issues, user stories
 | add | type, item, text | project |
 | edit | type, item, commentId, text | project |
 | delete | type, item, commentId | project |`;
-// Per-tool annotation must reflect the most destructive op (see tools/work.ts): this tool deletes comments.
-const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
+const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 const handler = async ({ op, type, item, project, text, commentId, includeDeleted }: Args): Promise<CallToolResult> => {
       if (!type) {
@@ -60,7 +41,7 @@ const handler = async ({ op, type, item, project, text, commentId, includeDelete
       let ref: string;
 
       if (normalizedType === 'wiki') {
-        const target = await resolveWikiTarget(item, project);
+        const target = await resolveWikiPage(item, project);
         targetId = target.id;
         targetVersion = target.version;
         ref = target.slug || `#${target.id}`;

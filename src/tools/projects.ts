@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { CallToolResult, RegisteredTool, TaigaProject, TaigaUser, ToolAnnotations } from '../types.js';
 import { get } from '../api.js';
 import { resolveProject } from '../taiga.js';
@@ -7,12 +7,12 @@ import { API_ENDPOINTS } from '../constants.js';
 import { createSuccessResponse, guard } from '../utils.js';
 import { details, listing, projectLine, userName } from '../format.js';
 
-const inputSchema = {
+const inputSchema = z.object({
   op: z.enum(['list', 'get', 'whoami']).describe('Operation to perform: list, get, or whoami'),
   project: z.string().optional().describe('Project ID or slug (required for get)'),
-};
+});
 
-type Args = z.output<z.ZodObject<typeof inputSchema>>;
+type Args = z.output<typeof inputSchema>;
 
 const description = `List or inspect Taiga projects and verify credentials.
 

@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-/**
- * HTTP transport test: boots dist/src/index.js over streamable HTTP (TAIGA_HTTP_PORT)
- * and exercises the real handshake. Needs no Taiga credentials — it only asserts
- * protocol surface and routing, never tool execution.
- */
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -13,6 +8,8 @@ import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { MAX_ATTACHMENT_BYTES } from '../src/constants.js';
 const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'index.js');
 
 let failed = 0;
@@ -34,7 +31,6 @@ const getFreePort = (): Promise<number> =>
     srv.on('error', reject);
     srv.listen(0, '127.0.0.1', () => {
       const addr = srv.address();
-      // SAFETY: TCP server.address() returns AddressInfo with port when listening on 127.0.0.1
       const info = addr as AddressInfo | null;
       const free = info && 'port' in info ? info.port : 0;
       srv.close(() => resolve(free));
@@ -77,7 +73,6 @@ interface HttpResult {
 
 type HttpMethod = 'GET' | 'POST' | 'DELETE';
 
-/** POST the given raw payload (pre-serialised) over HTTP; null body for GET/DELETE. */
 const request = (urlPath: string, payload: string | null, method: HttpMethod = 'POST'): Promise<HttpResult> =>
   new Promise((resolve, reject) => {
     const req = http.request(
@@ -117,15 +112,14 @@ interface JsonRpcResponse {
   error?: { code: number; message: string };
 }
 
-// Pull the JSON-RPC payload out of an SSE "message" event; plain-JSON responses pass through.
 const extract = (body: string): JsonRpcResponse | undefined => {
   const match = body.match(/event: message\ndata: (.*?)(?:\n\n|$)/s);
   const raw = (match ? match[1] : body).trim();
   if (!raw) return undefined;
-  // SAFETY: only called on /mcp 200 responses, whose body is a JSON-RPC response object
   return JSON.parse(raw) as JsonRpcResponse;
 };
 
+let modernClient: Client | undefined;
 try {
   await waitForPort(10_000);
 
@@ -174,6 +168,67 @@ try {
     }
   });
 
+  const connectedClient = new Client(
+    { name: 'http-modern-test', version: '1.0.0' },
+    { versionNegotiation: { mode: 'auto' } },
+  );
+  modernClient = connectedClient;
+  const modernTransport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`));
+  await connectedClient.connect(modernTransport);
+  check('v2 client negotiates the 2026-07-28 protocol era', () => {
+    assert.equal(connectedClient.getProtocolEra(), 'modern');
+    assert.equal(connectedClient.getNegotiatedProtocolVersion(), '2026-07-28');
+  });
+  const modernTools = await connectedClient.listTools();
+  check('modern client lists the same six tools', () => {
+    assert.equal(modernTools.tools.length, 6);
+  });
+  const validationFailure = await connectedClient.callTool({
+    name: 'projects',
+    arguments: { op: 'not-an-op' },
+  });
+  check('modern client receives schema validation failures in-band', () => {
+    assert.equal(validationFailure.isError, true);
+  });
+  const handlerFailure = await connectedClient.callTool({
+    name: 'attachments',
+    arguments: { op: 'upload', type: 'issue', item: '1' },
+  });
+  check('modern tools/call reaches the tool handler', () => {
+    assert.equal(handlerFailure.isError, true);
+    const [first] = handlerFailure.content;
+    assert.ok(first?.type === 'text' && first.text.includes('Exactly one of filePath or fileContent'));
+  });
+  await connectedClient.close();
+  modernClient = undefined;
+
+  const underCapCall = await request('/mcp', JSON.stringify({
+    jsonrpc: '2.0',
+    id: 4,
+    method: 'tools/call',
+    params: {
+      name: 'attachments',
+      arguments: { op: 'upload', type: 'issue', item: '1', description: 'x'.repeat(5 * 1024 * 1024) },
+    },
+  }));
+  check('tools/call under the HTTP body cap reaches the handler', () => {
+    assert.equal(underCapCall.status, 200, `expected 200, got ${underCapCall.status}`);
+    assert.match(underCapCall.body, /Exactly one of filePath or fileContent/);
+  });
+
+  const overCapCall = await request('/mcp', JSON.stringify({
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: {
+      name: 'attachments',
+      arguments: { op: 'upload', type: 'issue', item: '1', description: 'x'.repeat(MAX_ATTACHMENT_BYTES * 2 + 1) },
+    },
+  }));
+  check('tools/call over the HTTP body cap is rejected with 413', () => {
+    assert.equal(overCapCall.status, 413, `expected 413, got ${overCapCall.status}`);
+  });
+
   const malformed = await request('/mcp', '{ not json');
   check('malformed JSON body is rejected with 400', () => {
     assert.equal(malformed.status, 400, `expected 400, got ${malformed.status}: ${malformed.body.slice(0, 200)}`);
@@ -199,6 +254,7 @@ try {
   console.error(`  FAIL http handshake\n       ${message}`);
   console.error(`  server stderr: ${stderr.trim() || '(empty)'}`);
 } finally {
+  await modernClient?.close().catch(() => {});
   const exited = new Promise<void>((resolve) => { child.once('exit', () => resolve()); });
   child.kill('SIGKILL');
   await Promise.race([exited, new Promise((r) => setTimeout(r, 5_000))]);

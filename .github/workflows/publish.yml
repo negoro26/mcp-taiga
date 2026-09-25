@@ -54,7 +54,5 @@ jobs:
       - name: Compile distribution files
         run: npm run build
 
-      # Publishes via npm trusted publishing (OIDC). Prerequisite: package configured
-      # on npmjs.com (Settings -> Trusted publishing) with this repository and workflow.
       - name: Publish package to npm
         run: npm publish

@@ -1,6 +1,3 @@
-/**
- * Constants for the Taiga MCP server.
- */
 
 export const SERVER_INFO = {
   name: 'mcp-taiga',
@@ -60,10 +57,8 @@ export const SUCCESS_MESSAGES = {
   WIKI_PAGE_DELETED: 'Wiki page deleted',
 };
 
-/** Maximum items accepted by a single batch tool call. */
 export const MAX_BATCH_SIZE = 20;
 
-/** Maximum decoded size of an uploaded attachment (10 MB). */
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export const STATUS_LABELS = {

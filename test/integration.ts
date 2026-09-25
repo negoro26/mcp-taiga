@@ -1,16 +1,9 @@
 #!/usr/bin/env node
-/**
- * Live integration smoke test against a real Taiga instance.
- * Reads existing project data using MCP protocol over stdio.
- * Never creates, modifies, or deletes anything.
- */
-
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
-import { fileURLToPath } from 'node:url';
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
+import { existsSync } from 'node:fs';
 import path from 'node:path';
-import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
 import { isNumericId } from '../src/taiga.js';
 
 function isAsciiLetter(char: string | undefined): boolean {
@@ -63,8 +56,8 @@ function extractRef(text: string | null | undefined): string | null {
   return isNumericId(refStr) ? refStr : null;
 }
 
-// Compiled to dist/test/, so the repo root is two levels up — same adjustment as src/index.ts.
-dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.env'), quiet: true });
+const envPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.env');
+if (existsSync(envPath)) process.loadEnvFile(envPath);
 
 if (!process.env.TAIGA_USERNAME || !process.env.TAIGA_PASSWORD) {
   console.error('Skipping integration tests: TAIGA_USERNAME and TAIGA_PASSWORD are not set.');
@@ -95,7 +88,7 @@ interface CallResult {
 }
 
 async function call(name: string, args: ToolCallArgs = {}): Promise<CallResult> {
-  const res = await client.callTool({ name, arguments: args }, CallToolResultSchema);
+  const res = await client.callTool({ name, arguments: args });
   const blocks = 'content' in res && Array.isArray(res.content) ? res.content : [];
   const text = blocks.map((c) => (c.type === 'text' ? c.text : '')).join('\n');
 
@@ -112,10 +105,8 @@ async function call(name: string, args: ToolCallArgs = {}): Promise<CallResult> 
 try {
   await client.connect(transport);
 
-  // 1. Authenticate / Verify credentials
   await call('projects', { op: 'whoami' });
 
-  // 2. List projects & pick the first one
   const { text: projectsText } = await call('projects', { op: 'list' });
   const lines = projectsText.split('\n').map((l) => l.trim()).filter(Boolean);
   const headerLine = lines[0] || '';
@@ -141,7 +132,6 @@ try {
       await call('projects', { op: 'get', project: projectId });
     }
 
-    // 3. Read project items
     const { text: issuesText } = await call('work', { op: 'list', type: 'issue', project: projectId });
     const { text: storiesText } = await call('work', { op: 'list', type: 'story', project: projectId });
     await call('work', { op: 'list', type: 'task', project: projectId });
@@ -149,7 +139,6 @@ try {
     await call('work', { op: 'list', type: 'epic', project: projectId });
     await call('wiki', { op: 'list', project: projectId });
 
-    // 4. Issues: get and comments/attachments if issues exist
     const issueId = extractId(issuesText);
     if (issueId) {
       await call('work', { op: 'get', type: 'issue', item: issueId, project: projectId });
@@ -159,7 +148,6 @@ try {
       console.error('  skip getIssue / issue comments: no issues found');
     }
 
-    // 5. User Stories: get (by ID and #ref) and comments/attachments if stories exist
     const storyId = extractId(storiesText);
     const storyRef = extractRef(storiesText);
     if (storyId) {
@@ -173,7 +161,6 @@ try {
       console.error('  skip getUserStory / story comments: no user stories found');
     }
 
-    // 6. Milestones: get sprint by ID or name when a sprint exists
     const sprintLines = sprintsText.split('\n').map((l) => l.trim()).filter((l) => isDigitRecord(l));
     if (sprintLines.length > 0) {
       const sprintId = firstToken(sprintLines[0]);
@@ -185,7 +172,6 @@ try {
       console.error('  skip getMilestone: no sprints found');
     }
 
-    // 7. Filtered queries with 'me' (skip cleanly when data is absent)
     const { text: myTasksText } = await call('work', {
       op: 'list',
       type: 'task',
@@ -235,7 +221,6 @@ try {
   try {
     await client.close();
   } catch {
-    // ignore
   }
   process.exit(1);
 }

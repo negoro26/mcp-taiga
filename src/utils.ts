@@ -1,29 +1,16 @@
-/**
- * MCP response builders and display formatters. No network access lives here.
- */
 
 import { STATUS_LABELS } from './constants.js';
 import type { CallToolResult } from './types.js';
 
-/**
- * Build a successful tool result.
- * @param text human-readable summary
- */
 export function createSuccessResponse(text: string): CallToolResult {
   return { content: [{ type: 'text', text }] };
 }
 
-/**
- * Build a tool execution error. Per MCP spec these are reported in-band so the
- * model can self-correct, not raised as JSON-RPC protocol errors.
- * @param error
- */
 export function createErrorResponse(error: Error | string): CallToolResult {
   const message = error instanceof Error ? error.message : String(error);
   return { content: [{ type: 'text', text: `❌ ${message}` }], isError: true };
 }
 
-/** Wrap a tool handler so thrown errors become MCP tool errors instead of protocol errors. */
 export function guard<A>(handler: (args: A) => Promise<CallToolResult>): (args: A) => Promise<CallToolResult> {
   return async (args: A) => {
     try {

@@ -31,7 +31,7 @@ Tagging `v*` on `main` triggers the publish workflow, which re-runs type check, 
 
 ## Development Setup
 
-Requirements: Node.js >= 20.11.
+Requirements: Node.js >= 24.
 
 ```bash
 npm ci

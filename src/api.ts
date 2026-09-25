@@ -1,12 +1,3 @@
-/**
- * Taiga REST transport: one authenticated axios client, token cache, error preservation.
- *
- * Taiga paginates list endpoints at 30 items with `x-pagination-*` response headers and
- * honours the `x-disable-pagination` request header, so no page-walking loop is needed.
- */
-
-import axios, { isAxiosError } from 'axios';
-import type { AxiosInstance, AxiosResponse } from 'axios';
 import type {
   ApiError,
   AuthResponse,
@@ -23,14 +14,6 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 let warnedInsecureHttp = false;
 
-/**
- * API root, read at call time.
- *
- * MUST stay lazy: ES module imports are evaluated before any statement in the importing
- * module, so a module-level constant here would be fixed before src/index.js calls
- * dotenv.config() and TAIGA_API_URL from .env would be silently ignored — every request
- * would go to the public taiga.io instead of the configured host.
- */
 export function apiBaseUrl(): string {
   const url = process.env.TAIGA_API_URL || DEFAULT_API_URL;
   let parsed: URL;
@@ -54,37 +37,69 @@ export function apiBaseUrl(): string {
 
 let token: string | null = null;
 let tokenExpiresAt = 0;
-let client: AxiosInstance | null = null;
 
-/** True when credentials are available in the environment. */
 export function isConfigured(): boolean {
   return Boolean(process.env.TAIGA_USERNAME && process.env.TAIGA_PASSWORD);
 }
 
-/**
- * Wrap an axios failure in an Error that keeps the HTTP status and Taiga's response body.
- * Taiga returns validation errors as `{ field: ["message"] }` and auth errors as
- * `{ _error_message: "..." }`; both are flattened into the message.
- */
-function apiError(error: Error, action: string): ApiError {
-  let status: number | undefined;
-  let body: TaigaErrorBody | undefined;
-  let detail = error.message;
-  if (isAxiosError<TaigaErrorBody>(error)) {
-    status = error.response?.status;
-    body = error.response?.data;
+function isErrorBodyObject(body: TaigaErrorBody | undefined): body is Exclude<TaigaErrorBody, string> {
+  return body !== undefined && Object(body) === body;
+}
+
+class FetchError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: TaigaErrorBody | undefined,
+    readonly retryAfterMs: number | null,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'FetchError';
   }
-  // This IS the I/O boundary: `body` is whatever an arbitrary HTTP error carried — a Taiga
-  // validation object, an HTML error page from a proxy, or nothing. Narrowing by `typeof` is the
-  // check, not a shortcut around one, and a schema here would only guard a diagnostic string.
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof
-  if (body && typeof body === 'object') {
+}
+
+function buildApiUrl(path: string, params?: QueryParams): string {
+  const base = new URL(apiBaseUrl());
+  base.search = '';
+  base.hash = '';
+  if (!base.pathname.endsWith('/')) base.pathname += '/';
+  const url = new URL(path.replace(/^\/+/, ''), base);
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value !== null && value !== undefined) url.searchParams.append(key, String(value));
+  }
+  return url.toString();
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as T;
+  }
+}
+
+async function fetchData(url: string, init: RequestInit): Promise<Response> {
+  return globalThis.fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+}
+
+function responseError(response: Response, detail: TaigaErrorBody | undefined): FetchError {
+  const message = response.statusText || `Request failed with status code ${response.status}`;
+  return new FetchError(response.status, detail, parseRetryAfter(response.headers.get('retry-after')), message);
+}
+
+function apiError(error: Error, action: string): ApiError {
+  const fetchError = error instanceof FetchError ? error : undefined;
+  const status = fetchError?.status;
+  const body = fetchError?.detail;
+  let detail = error.message;
+  if (isErrorBodyObject(body)) {
     detail = body._error_message
       || Object.entries(body)
         .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
         .join('; ');
-  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- same boundary, string body branch
-  } else if (typeof body === 'string' && body) {
+  } else if (body) {
     detail = body;
   }
   return Object.assign(new Error(`${action} failed${status ? ` (HTTP ${status})` : ''}: ${detail}`), {
@@ -93,14 +108,16 @@ function apiError(error: Error, action: string): ApiError {
   });
 }
 
-/**
- * Exchange credentials for an auth token.
- */
 export async function login(username: string, password: string): Promise<AuthResponse> {
   try {
-    const { data } = await axios.post<AuthResponse>(`${apiBaseUrl()}/auth`, { type: 'normal', username, password }, { timeout: REQUEST_TIMEOUT_MS });
+    const response = await fetchData(buildApiUrl('auth'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'normal', username, password }),
+    });
+    if (!response.ok) throw responseError(response, await parseResponse<TaigaErrorBody>(response));
+    const data = await parseResponse<AuthResponse>(response);
     token = data.auth_token;
-    // ponytail: fixed TTL instead of decoding the JWT; a 401 retry below covers early expiry.
     tokenExpiresAt = Date.now() + 12 * 60 * 60 * 1000;
     return data;
   } catch (error) {
@@ -122,66 +139,59 @@ async function getToken(): Promise<string> {
   return token;
 }
 
-function getClient(): AxiosInstance {
-  if (client) return client;
-  client = axios.create({
-    baseURL: apiBaseUrl(),
-    timeout: REQUEST_TIMEOUT_MS,
-    // Return whole collections instead of the default 30-item first page.
-    headers: { 'x-disable-pagination': 'true' },
-  });
-  client.interceptors.request.use(async (config) => {
-    config.headers.Authorization = `Bearer ${await getToken()}`;
-    return config;
-  });
-  return client;
-}
-
-/** Longest throttle wait worth blocking a tool call for; beyond this, report instead of sleeping. */
 const MAX_THROTTLE_WAIT_MS = 5000;
 
-/** `Retry-After` in seconds or as an HTTP date; null when absent or unparseable. */
-function retryAfterMs(response?: AxiosResponse): number | null {
-  const header = response?.headers?.['retry-after'];
+function parseRetryAfter(header: string | null): number | null {
   if (!header) return null;
   const seconds = Number(header);
   if (Number.isFinite(seconds)) return seconds * 1000;
-  const when = Date.parse(String(header));
+  const when = Date.parse(header);
   return Number.isFinite(when) ? Math.max(0, when - Date.now()) : null;
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms); });
+const sleep = async (ms: number): Promise<void> => {
+  await new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+};
 
 export interface RequestOptions {
   params?: QueryParams;
   data?: JsonBody | FormData;
   headers?: Record<string, string>;
-  responseType?: 'json' | 'arraybuffer';
 }
 
-/**
- * Perform an API call and return the response body.
- *
- * Retries are deliberately narrow. A 401 means the cached token died, so re-authenticate once.
- * A 429 means the request was rejected without being processed, so it is safe to repeat for any
- * method — but only after the server's own `Retry-After`, and only if that wait is short enough
- * to be worth blocking on. 5xx is NOT retried: the request may have been applied, and silently
- * repeating a POST would duplicate work items.
- */
+async function fetchRequest<T>(method: string, path: string, options: RequestOptions): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set('x-disable-pagination', 'true');
+  headers.set('Authorization', `Bearer ${await getToken()}`);
+  const init: RequestInit = { method, headers };
+  if (options.data !== undefined) {
+    if (options.data instanceof FormData) {
+      headers.delete('Content-Type');
+      init.body = options.data;
+    } else {
+      init.body = JSON.stringify(options.data);
+      if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    }
+  }
+  const response = await fetchData(buildApiUrl(path, options.params), init);
+  if (!response.ok) throw responseError(response, await parseResponse<TaigaErrorBody>(response));
+  return parseResponse<T>(response);
+}
+
 export async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
-  const config = { method, url: path, ...options };
   let throttleRetries = 2;
   for (;;) {
     try {
-      return (await getClient().request<T>(config)).data;
+      return await fetchRequest<T>(method, path, options);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      const status = isAxiosError(err) ? err.response?.status : undefined;
+      const fetchError = err instanceof FetchError ? err : undefined;
+      const status = fetchError?.status;
 
       if (status === 401 && token) {
         token = null;
         try {
-          return (await getClient().request<T>(config)).data;
+          return await fetchRequest<T>(method, path, options);
         } catch (retryError) {
           const retryErr = retryError instanceof Error ? retryError : new Error(String(retryError));
           throw apiError(retryErr, `${method} ${path}`);
@@ -189,11 +199,11 @@ export async function request<T>(method: string, path: string, options: RequestO
       }
 
       if (status === 429 && throttleRetries > 0) {
-        const wait = isAxiosError(err) ? retryAfterMs(err.response) ?? 1000 : 1000;
+        const wait = fetchError?.retryAfterMs ?? 1000;
         if (wait > MAX_THROTTLE_WAIT_MS) {
           throw Object.assign(
             new Error(`${method} ${path} was rate limited; retry in ${Math.ceil(wait / 1000)}s`),
-            { status, detail: isAxiosError<TaigaErrorBody>(err) ? err.response?.data : undefined },
+            { status, detail: fetchError?.detail },
           );
         }
         throttleRetries -= 1;
@@ -218,18 +228,9 @@ interface CachedResponse {
   value: CachedValue;
 }
 
-/** Project metadata is stable for the length of a session; work items are not. */
 const METADATA_TTL_MS = 60_000;
 const metadata = new Map<string, CachedResponse>();
 
-/**
- * GET through a short-lived process cache.
- *
- * ONLY for project metadata that our own writes cannot change: members, statuses, priorities,
- * severities, issue types, project lookup by slug. NEVER for work items, comments or attachments —
- * a stale issue list is a wrong answer, whereas a stale status list is not, and the cache is what
- * keeps a single tool call from fetching /users twice and a session from refetching it per call.
- */
 export async function getMetadata<T>(path: string, params?: QueryParams): Promise<T> {
   const key = `${path} ${JSON.stringify(params ?? {})}`;
   const hit = metadata.get(key);
@@ -246,11 +247,9 @@ export async function getMetadata<T>(path: string, params?: QueryParams): Promis
     value = await get<CachedValue>(path, params);
     metadata.set(key, { value, expires: Date.now() + METADATA_TTL_MS });
   }
-  // SAFETY: caller's type parameter T must match the endpoint passed in path
   return value as T;
 }
 
-/** Drop cached metadata. Test hook, and an escape hatch after out-of-band project edits. */
 export function clearMetadata(): void {
   metadata.clear();
 }

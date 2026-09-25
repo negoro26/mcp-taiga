@@ -1,9 +1,8 @@
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
-import axios from 'axios';
 import { z } from 'zod';
 import { apiBaseUrl, get, del, request } from '../api.js';
-import { isNumericId, resolveProjectId, resolveItem, itemType } from '../taiga.js';
+import { resolveItem, itemType, resolveWikiPage } from '../taiga.js';
 import { createSuccessResponse, guard } from '../utils.js';
 import { attachmentLine, details, listing } from '../format.js';
 import { MAX_ATTACHMENT_BYTES } from '../constants.js';
@@ -48,11 +47,16 @@ function detectMimeType(fileName?: string): string {
   if (!fileName) return 'application/octet-stream';
   const ext = fileName.split('.').pop()?.toLowerCase();
   if (ext && ext in MIME_TYPES) {
-    // SAFETY: `in` check proves `ext` is a valid key of MIME_TYPES
     return MIME_TYPES[ext as keyof typeof MIME_TYPES];
   }
   return 'application/octet-stream';
 }
+
+const attachmentSizeError = (size: number): Error => {
+  const maxMb = (MAX_ATTACHMENT_BYTES / (1024 * 1024)).toFixed(0);
+  const actualMb = (size / (1024 * 1024)).toFixed(2);
+  return new Error(`Attachment size (${actualMb} MB) exceeds the maximum allowed size of ${maxMb} MB.`);
+};
 
 async function resolveTargetItem(
   type: ItemTypeKey,
@@ -60,20 +64,12 @@ async function resolveTargetItem(
   project?: string | number,
 ): Promise<TaigaWorkItem | TaigaWikiPage> {
   if (type === 'wiki') {
-    const raw = String(item).trim();
-    if (isNumericId(raw)) {
-      return get<TaigaWikiPage>(`/wiki/${raw}`);
-    }
-    if (!project) {
-      throw new Error('Project ID or slug is required when resolving a wiki page by slug.');
-    }
-    const projectId = await resolveProjectId(project);
-    return get<TaigaWikiPage>('/wiki/by_slug', { slug: raw, project: projectId });
+    return resolveWikiPage(item, project);
   }
   return resolveItem(type, item, project);
 }
 
-const inputSchema = {
+const inputSchema = z.object({
   op: z.enum(['list', 'upload', 'download', 'delete']).describe('Operation to perform: list, upload, download, delete'),
   type: z.enum(['issue', 'story', 'user_story', 'task', 'epic', 'wiki']).optional().describe('Target item type (issue, story, task, epic, wiki)'),
   item: z.union([z.string(), z.number()]).optional().describe('Item numeric ID, #ref, or wiki slug'),
@@ -85,9 +81,10 @@ const inputSchema = {
   mimeType: z.string().optional().describe('MIME type of uploaded file'),
   description: z.string().optional().describe('Attachment description text'),
   savePath: z.string().optional().describe('Local filesystem path to save downloaded file'),
-};
+  includeContent: z.boolean().optional().describe('Include file bytes in the response (default false; use savePath to write a file)'),
+});
 
-type Args = z.output<z.ZodObject<typeof inputSchema>>;
+type Args = z.output<typeof inputSchema>;
 
 const description = `List, upload, download, or delete attachments across work items and wiki pages.
 
@@ -95,10 +92,9 @@ const description = `List, upload, download, or delete attachments across work i
 |---|---|---|---|
 | list | type, item | project | List attachments on a work item or wiki page |
 | upload | type, item, filePath OR fileContent | project, fileName, mimeType, description | Upload file to Taiga host from local path (harness resolves local:// URIs) or base64 |
-| download | type, attachmentId | savePath | Fetch metadata and bytes; writes to savePath when given |
+| download | type, attachmentId | savePath, includeContent | Metadata by default; set includeContent true to return bytes, or savePath to write them to disk |
 | delete | type, attachmentId | | Delete attachment by ID |`;
-// Per-tool annotation must reflect the most destructive op (see tools/work.ts): this tool deletes attachments permanently.
-const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, openWorldHint: true };
+const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 const handler = async ({
   op,
@@ -112,6 +108,7 @@ const handler = async ({
   mimeType,
   description,
   savePath,
+  includeContent,
 }: Args): Promise<CallToolResult> => {
       if (op === 'list') {
         if (!type) throw new Error('type is required for op "list" (issue, story, task, epic, wiki).');
@@ -164,9 +161,7 @@ const handler = async ({
         }
 
         if (buffer.length > MAX_ATTACHMENT_BYTES) {
-          const maxMb = (MAX_ATTACHMENT_BYTES / (1024 * 1024)).toFixed(0);
-          const actualMb = (buffer.length / (1024 * 1024)).toFixed(2);
-          throw new Error(`Attachment size (${actualMb} MB) exceeds the maximum allowed size of ${maxMb} MB.`);
+          throw attachmentSizeError(buffer.length);
         }
 
         const targetType: ItemTypeKey = type === 'story' ? 'user_story' : type;
@@ -216,16 +211,43 @@ const handler = async ({
           throw new Error(`Refusing to download attachment from host "${downloadUrl.hostname}": does not match Taiga host "${taigaUrl.hostname}".`);
         }
 
-        // Bare axios call is used so the media host does not receive the Taiga bearer token.
-        const { data } = await axios.get<ArrayBuffer>(downloadUrl.toString(), {
-          responseType: 'arraybuffer',
-          maxRedirects: 0,
-          timeout: 30000,
-          maxContentLength: MAX_ATTACHMENT_BYTES,
-          maxBodyLength: MAX_ATTACHMENT_BYTES,
+        let buffer: Buffer;
+        const response = await globalThis.fetch(downloadUrl, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(30_000),
         });
-        const buffer = Buffer.from(data);
-        const base64 = buffer.toString('base64');
+        if (!response.ok) {
+          throw new Error(response.statusText || `Request failed with status code ${response.status}`);
+        }
+        const contentLength = Number(response.headers.get('content-length'));
+        if (Number.isFinite(contentLength) && contentLength > MAX_ATTACHMENT_BYTES) {
+          throw attachmentSizeError(contentLength);
+        }
+        if (response.body !== null) {
+          const reader = response.body.getReader();
+          const chunks: Buffer[] = [];
+          let size = 0;
+          try {
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              size += value.byteLength;
+              if (size > MAX_ATTACHMENT_BYTES) {
+                await reader.cancel();
+                throw attachmentSizeError(size);
+              }
+              chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+            }
+          } finally {
+            reader.releaseLock();
+          }
+          buffer = Buffer.concat(chunks, size);
+        } else {
+          buffer = Buffer.from(await response.arrayBuffer());
+          if (buffer.byteLength > MAX_ATTACHMENT_BYTES) {
+            throw attachmentSizeError(buffer.byteLength);
+          }
+        }
         const detectedMime = detectMimeType(attachment.name || '');
 
         let text: string;
@@ -253,26 +275,23 @@ const handler = async ({
             ['Size', sizeStr],
             ['MIME', detectedMime],
             ['URL', attachment.url],
-            ['Note', 'Provide savePath to write bytes to a file.'],
+            ['Note', 'Provide savePath to write bytes to a file, or set includeContent true to return them.'],
           ]);
         }
 
-        return {
-          content: [
-            {
-              type: 'resource',
-              resource: {
-                uri: attachment.url,
-                mimeType: detectedMime,
-                blob: base64,
-              },
+        const content: CallToolResult['content'] = [];
+        if (includeContent === true) {
+          content.push({
+            type: 'resource',
+            resource: {
+              uri: attachment.url,
+              mimeType: detectedMime,
+              blob: buffer.toString('base64'),
             },
-            {
-              type: 'text',
-              text,
-            },
-          ],
-        };
+          });
+        }
+        content.push({ type: 'text', text });
+        return { content };
       }
 
       if (op === 'delete') {

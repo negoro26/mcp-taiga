@@ -1,20 +1,18 @@
 #!/usr/bin/env node
-/**
- * MCP protocol test: boots src/index.js over stdio and exercises the real handshake.
- * Needs no Taiga credentials — it only asserts protocol surface, never tool execution.
- */
 
 import assert from 'node:assert/strict';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { isNumericId } from '../src/taiga.js';
 
 const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'index.js');
-const client = new Client({ name: 'protocol-test', version: '1.0.0' });
+const client = new Client(
+  { name: 'protocol-test', version: '1.0.0' },
+  { versionNegotiation: { mode: 'auto' } },
+);
 const transport = new StdioClientTransport({ command: process.execPath, args: [serverPath], stderr: 'pipe' });
 
 let failed = 0;
@@ -30,15 +28,16 @@ const check = (name: string, fn: () => void): void => {
 };
 
 await client.connect(transport);
+check('server negotiates the 2026-07-28 protocol era', () => {
+  assert.equal(client.getProtocolEra(), 'modern');
+  assert.equal(client.getNegotiatedProtocolVersion(), '2026-07-28');
+});
 
-// Read the manifest the same way a consumer would, so the handshake cannot drift from it.
 const manifestPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
 const manifest: { name: string; version: string } = JSON.parse(await readFile(manifestPath, 'utf8'));
 
 const version = client.getServerVersion();
 check('server advertises the same name and version as package.json', () => {
-  // Regression: the server announced 2.0.0 while the manifest said 1.0.0. A client only ever sees
-  // what the handshake reports, so the two must not be allowed to drift apart silently.
   assert.ok(version, 'no server version returned');
   assert.equal(version.name, manifest.name, 'handshake name must match package.json name');
   assert.equal(version.version, manifest.version, 'handshake version must match package.json version');
@@ -66,7 +65,6 @@ check('every tool exposes a JSON Schema with required op and all properties desc
     assert.equal(tool.inputSchema.type, 'object', `${tool.name} input schema is not an object`);
     assert.ok(tool.title || tool.annotations?.title, `${tool.name} has no title`);
     assert.ok(tool.inputSchema.required?.includes('op'), `${tool.name} must require 'op'`);
-    // SAFETY: tool inputSchema properties is an object per JSON Schema spec
     const properties = tool.inputSchema.properties as Record<string, { description?: string; enum?: string[] }> | undefined;
     const opProp = properties?.op;
     assert.ok(opProp, `${tool.name} missing 'op' property`);
@@ -79,7 +77,6 @@ check('every tool exposes a JSON Schema with required op and all properties desc
 
 check('no tool declares an output schema', () => {
   for (const tool of tools) {
-    // SAFETY: checking runtime absence of outputSchema on MCP tool object
     assert.equal((tool as { outputSchema?: string }).outputSchema, undefined, `${tool.name} must not declare outputSchema`);
   }
 });
@@ -94,6 +91,11 @@ check('projects tool is annotated readOnlyHint, mutating tools are not', () => {
     assert.equal(tool.annotations?.readOnlyHint, false, `${tool.name} must have readOnlyHint: false`);
   }
 });
+check('mutating tools advertise idempotentHint: false', () => {
+  for (const tool of tools.filter((candidate) => candidate.name !== 'projects')) {
+    assert.equal(tool.annotations?.idempotentHint, false, `${tool.name} must have idempotentHint: false`);
+  }
+});
 
 check('work tool advertises destructiveHint: true, projects does not', () => {
   const work = tools.find((t) => t.name === 'work');
@@ -106,7 +108,6 @@ check('work tool advertises destructiveHint: true, projects does not', () => {
 });
 
 check('tools/list payload serialisation budget is under 12000 characters', () => {
-  // 44 single-purpose tools cost 63243 characters; this consolidated 6-tool surface costs about 10500 characters
   const serialized = JSON.stringify(tools);
   assert.ok(serialized.length < 12000, `tools/list payload exceeded budget: ${serialized.length} chars (budget 12000)`);
 });
@@ -116,15 +117,11 @@ check('projects resource is registered', () => {
   assert.deepEqual(resources.map((r) => r.uri), ['taiga://projects']);
 });
 
-// Must not depend on whether credentials are configured: this call fails in the handler's own
-// validation, before any network access. A handler throw has to surface as an in-band tool error,
-// never as a JSON-RPC protocol error, so the model can read it and correct itself.
 const rejected = await client.callTool(
   {
     name: 'attachments',
     arguments: { op: 'upload', type: 'issue', item: '1' },
-  },
-  CallToolResultSchema,
+  }
 );
 check('a handler throw is reported in-band, not as a protocol error', () => {
   assert.equal(rejected.isError, true);
