@@ -32,7 +32,6 @@ src/index.ts        process entry: load .env, build the server, hand over to std
 | Who may change something | `assertWritable` in `src/taiga.ts` |
 | Retry, timeout, auth | `request` and `fetchRequest` in `src/api.ts` |
 | A list never returns more than 50 rows unless asked | `MAX_LIST_ROWS` | `src/constants.ts` |
-| Whether `42` or `#42` means an ID or a reference | `resolveItem` | `src/taiga.ts` |
 | How output is rendered | `src/format.ts` |
 | A new tool | a file in `src/tools/`, then add it to `src/tools/index.ts` |
 
@@ -55,7 +54,7 @@ Each file exports one `tools` array holding a single tool definition with `name`
 
 | Behaviour | Symbol | File |
 | --- | --- | --- |
-| `"42"` or `"#42"` becomes a record | `resolveItem` | `src/taiga.ts` |
+| a bare number is an ID, `#42` a reference inside the given project, with no fallback between them | `resolveItem` | `src/taiga.ts` |
 | project slug or id becomes an id | `resolveProjectId` | `src/taiga.ts` |
 | wiki slug or id becomes a page | `resolveWikiPage` | `src/taiga.ts` |
 | `"me"`, a username, or an id becomes a user id | `resolveMemberId` | `src/taiga.ts` |

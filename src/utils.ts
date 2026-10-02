@@ -19,7 +19,6 @@ export function guard<A>(handler: (args: A) => Promise<CallToolResult>): (args: 
   };
 }
 
-
 export function calculateCompletionPercentage(completed: number, total: number): number {
   if (!total) return 0;
   return Math.round((completed / total) * 100);

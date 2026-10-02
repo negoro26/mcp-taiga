@@ -37,10 +37,4 @@ export default defineConfig({
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
   },
-  overrides: [
-    {
-      files: ["test/**/*.js"],
-      rules: { "anti-slop/no-runtime-typeof": "off" },
-    },
-  ],
 });
