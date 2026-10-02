@@ -59,15 +59,7 @@ export const SUCCESS_MESSAGES = {
 
 export const MAX_BATCH_SIZE = 20;
 
+export const MAX_LIST_ROWS = 50;
+
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
-export const STATUS_LABELS = {
-  ACTIVE: 'Active',
-  CLOSED: 'Closed',
-  UNKNOWN: 'Unknown',
-  NOT_SET: 'Not set',
-  UNASSIGNED: 'Unassigned',
-  NO_SPRINT: 'No Sprint',
-  NO_DESCRIPTION: 'No description provided',
-  NO_TAGS: 'No tags',
-};

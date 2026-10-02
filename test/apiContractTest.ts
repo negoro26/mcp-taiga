@@ -497,6 +497,7 @@ const server = http.createServer(async (req, res) => {
       ref: Number(query['ref'] || 1),
       subject: 'Issue 1',
       project: 1,
+      owner: 1,
       version: 1,
       status_extra_info: { name: 'In progress' },
       priority_extra_info: { name: 'High' },
@@ -515,6 +516,17 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/v1/issues' && req.method === 'GET') {
     if (query['q'] === 'empty') {
       sendJson(200, []);
+      return;
+    }
+    if (query['q'] === 'bulk') {
+      sendJson(200, Array.from({ length: 60 }, (_, i) => ({
+        id: 200 + i,
+        ref: 200 + i,
+        subject: `Bulk issue ${i + 1}`,
+        project: 1,
+        version: 1,
+        status_extra_info: { name: 'New' },
+      })));
       return;
     }
     sendJson(200, [
@@ -597,6 +609,7 @@ const server = http.createServer(async (req, res) => {
       ref: 1,
       subject: 'Issue 1',
       project: 1,
+      owner: 1,
       version: 1,
       status_extra_info: { name: 'In progress' },
       priority_extra_info: { name: 'High' },
@@ -623,6 +636,67 @@ const server = http.createServer(async (req, res) => {
       created_date: '2026-08-01T00:00:00Z',
       modified_date: '2026-08-02T00:00:00Z',
       description: 'A'.repeat(2500),
+    });
+    return;
+  }
+
+  if (pathname === '/api/v1/issues/103' && req.method === 'GET') {
+    sendJson(200, {
+      id: 103,
+      ref: 3,
+      subject: 'Other Owner Issue',
+      project: 1,
+      version: 1,
+      owner: 2,
+      status_extra_info: { name: 'New' },
+      created_date: '2026-08-01T00:00:00Z',
+      modified_date: '2026-08-02T00:00:00Z',
+    });
+    return;
+  }
+
+  if (pathname === '/api/v1/issues/104' && req.method === 'GET') {
+    sendJson(200, {
+      id: 104,
+      ref: 4,
+      subject: 'Other Owner Assigned Issue',
+      project: 1,
+      version: 1,
+      owner: 2,
+      assigned_to: 1,
+      assigned_to_extra_info: { id: 1, username: 'tester', full_name_display: 'Tester User' },
+      status_extra_info: { name: 'New' },
+      created_date: '2026-08-01T00:00:00Z',
+      modified_date: '2026-08-02T00:00:00Z',
+    });
+    return;
+  }
+
+  if (pathname === '/api/v1/issues/105' && req.method === 'GET') {
+    sendJson(200, {
+      id: 105,
+      ref: 5,
+      subject: 'Ownerless Issue',
+      project: 1,
+      version: 1,
+      status_extra_info: { name: 'New' },
+      created_date: '2026-08-01T00:00:00Z',
+      modified_date: '2026-08-02T00:00:00Z',
+    });
+    return;
+  }
+
+  if (
+    (pathname === '/api/v1/issues/103' || pathname === '/api/v1/issues/104' || pathname === '/api/v1/issues/105')
+    && req.method === 'PATCH'
+  ) {
+    sendJson(200, {
+      id: Number(segments[3]),
+      ref: Number(segments[3]) - 100,
+      subject: body?.subject || 'Issue',
+      project: 1,
+      version: (body?.version || 1) + 1,
+      status_extra_info: { name: 'New' },
     });
     return;
   }
@@ -740,6 +814,7 @@ const server = http.createServer(async (req, res) => {
       ref: 2,
       subject: 'Story 1',
       project: 1,
+      owner: 1,
       version: 1,
       status_extra_info: { name: 'In progress' },
       assigned_users: [1, 2],
@@ -859,6 +934,7 @@ const server = http.createServer(async (req, res) => {
       ref: 3,
       subject: 'Task 1',
       project: 1,
+      owner: 1,
       version: 1,
       user_story: 201,
       user_story_extra_info: { ref: 2, subject: 'Story 1' },
@@ -977,6 +1053,7 @@ const server = http.createServer(async (req, res) => {
       ref: 4,
       subject: 'Epic 1',
       project: 1,
+      owner: 1,
       version: 1,
       status_extra_info: { name: 'In progress' },
       project_extra_info: { name: 'Project 1' },
@@ -1017,6 +1094,44 @@ const server = http.createServer(async (req, res) => {
     isNumericId(segments[3]) &&
     req.method === 'DELETE'
   ) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (pathname === '/api/v1/wiki/by_slug' && query['slug'] === 'other-owner-page' && req.method === 'GET') {
+    sendJson(200, {
+      id: 602,
+      slug: 'other-owner-page',
+      project: 1,
+      version: 1,
+      content: 'Wiki page owned by another user',
+      created_date: '2026-08-01T00:00:00Z',
+      modified_date: '2026-08-02T00:00:00Z',
+      watchers: [],
+      owner: 2,
+      last_modifier: 2,
+    });
+    return;
+  }
+
+  if (pathname === '/api/v1/wiki/602' && req.method === 'PATCH') {
+    sendJson(200, {
+      id: 602,
+      slug: 'other-owner-page',
+      project: 1,
+      version: (body?.version || 1) + 1,
+      content: body?.content || 'Updated other-owner wiki content',
+      created_date: '2026-08-01T00:00:00Z',
+      modified_date: '2026-08-02T00:00:00Z',
+      watchers: [],
+      owner: 2,
+      last_modifier: 1,
+    });
+    return;
+  }
+
+  if (pathname === '/api/v1/wiki/602' && req.method === 'DELETE') {
     res.writeHead(204);
     res.end();
     return;
@@ -1172,9 +1287,17 @@ const server = http.createServer(async (req, res) => {
     sendJson(200, [
       {
         id: '11111111-1111-1111-1111-111111111111',
-        user: { name: 'Tester User', username: 'tester' },
+        user: { id: 1, pk: 1, name: 'Tester User', username: 'tester' },
         created_at: '2026-08-01T12:00:00Z',
         comment: 'Sample comment text',
+        edit_comment_date: null,
+        delete_comment_date: null,
+      },
+      {
+        id: '22222222-2222-2222-2222-222222222222',
+        user: { id: 2, pk: 2, name: 'Alex Developer', username: 'alex' },
+        created_at: '2026-08-02T12:00:00Z',
+        comment: 'Comment by another user',
         edit_comment_date: null,
         delete_comment_date: null,
       },
@@ -1244,11 +1367,23 @@ const server = http.createServer(async (req, res) => {
           });
           return;
         }
+        if (attId === 707) {
+          sendJson(200, {
+            id: 707,
+            name: 'other-owner-attachment.txt',
+            size: 24,
+            url: `http://127.0.0.1:${serverPort}/media/other-owner-attachment.txt`,
+            owner: 2,
+            created_date: '2026-08-01T00:00:00Z',
+          });
+          return;
+        }
         sendJson(200, {
           id: 701,
           name: 'test-attachment.txt',
           size: 24,
           url: `http://127.0.0.1:${serverPort}/media/test-attachment.txt`,
+          owner: 1,
           created_date: '2026-08-01T00:00:00Z',
         });
         return;
@@ -1376,6 +1511,7 @@ let listUserStoriesRes!: CallToolResult;
 let listTasksRes!: CallToolResult;
 let listEpicsRes!: CallToolResult;
 let listWithLimitRes!: CallToolResult;
+let listCappedRes!: CallToolResult;
 let listEmptyRes!: CallToolResult;
 let listSprintsRes!: CallToolResult;
 let getSprintRes!: CallToolResult;
@@ -1405,6 +1541,7 @@ let deleteEpicRes!: CallToolResult;
 let deleteByRefRes!: CallToolResult;
 let deleteNoItemRes!: CallToolResult;
 let deleteWithItemsRes!: CallToolResult;
+let getNumericNotFoundRes!: CallToolResult;
 
 try {
   await runToolCheck('projects', { op: 'whoami' });
@@ -1432,6 +1569,12 @@ try {
     type: 'issue',
     project: 'project-1',
     limit: 1,
+  });
+  listCappedRes = await runToolCheck('work', {
+    op: 'list',
+    type: 'issue',
+    project: 'project-1',
+    q: 'bulk',
   });
   listEmptyRes = await runToolCheck('work', {
     op: 'list',
@@ -1664,6 +1807,12 @@ try {
     item: '#1',
     project: 'project-1',
   });
+  getNumericNotFoundRes = await runToolCheck('work', {
+    op: 'get',
+    type: 'issue',
+    item: '9999',
+    project: 'project-1',
+  }, { expectError: true });
 
   listSprintsRes = await runToolCheck('sprints', { op: 'list', project: 'project-1' });
   getSprintRes = await runToolCheck('sprints', { op: 'get', project: 'project-1', sprint: 'Sprint 1' });
@@ -2000,6 +2149,121 @@ try {
     { expectError: true },
   );
 
+  const otherOwnerDeleteRes = await runToolCheck(
+    'work',
+    {
+      op: 'delete',
+      type: 'issue',
+      item: 103,
+    },
+    { expectError: true },
+  );
+
+  const assigneeUpdateRes = await runToolCheck('work', {
+    op: 'update',
+    type: 'issue',
+    item: 104,
+    subject: 'Updated Assigned Foreign Issue',
+  });
+
+  const unassignedUpdateRes = await runToolCheck(
+    'work',
+    {
+      op: 'update',
+      type: 'issue',
+      item: 103,
+      subject: 'Updated Other Owner Issue',
+    },
+    { expectError: true },
+  );
+
+  const ownerlessUpdateRes = await runToolCheck(
+    'work',
+    {
+      op: 'update',
+      type: 'issue',
+      item: 105,
+      subject: 'Updated Ownerless Issue',
+    },
+    { expectError: true },
+  );
+
+  const otherOwnerWikiUpdateRes = await runToolCheck(
+    'wiki',
+    {
+      op: 'update',
+      page: 'other-owner-page',
+      project: 'project-1',
+      content: '# Hijacked Other Owner Page',
+    },
+    { expectError: true },
+  );
+
+  const otherOwnerWikiDeleteRes = await runToolCheck(
+    'wiki',
+    {
+      op: 'delete',
+      page: 'other-owner-page',
+      project: 'project-1',
+    },
+    { expectError: true },
+  );
+
+  const otherOwnerAttachmentDeleteRes = await runToolCheck(
+    'attachments',
+    {
+      op: 'delete',
+      type: 'issue',
+      attachmentId: '707',
+    },
+    { expectError: true },
+  );
+
+  const otherAuthorCommentEditRes = await runToolCheck(
+    'comments',
+    {
+      op: 'edit',
+      type: 'issue',
+      item: '101',
+      commentId: '22222222-2222-2222-2222-222222222222',
+      text: 'Hijacked comment content',
+    },
+    { expectError: true },
+  );
+
+  const otherAuthorCommentDeleteRes = await runToolCheck(
+    'comments',
+    {
+      op: 'delete',
+      type: 'issue',
+      item: '101',
+      commentId: '22222222-2222-2222-2222-222222222222',
+    },
+    { expectError: true },
+  );
+
+  const defaultedSprintStoryRes = await runToolCheck('work', {
+    op: 'create',
+    type: 'story',
+    project: 'project-1',
+    subject: 'Default Sprint Story',
+  });
+
+  const noSprintStoryRes = await runToolCheck('work', {
+    op: 'create',
+    type: 'story',
+    project: 'project-1',
+    subject: 'Explicit No Sprint Story',
+    sprint: 'none',
+  });
+
+  const noSprintIssueRes = await runToolCheck('work', {
+    op: 'create',
+    type: 'issue',
+    project: 'project-1',
+    subject: 'No Sprint Issue',
+  });
+
   const authCanaryPassword = 'pw-canary-do-not-leak';
   let leakPort = 0;
   const leakServer = http.createServer((req, res) => {
@@ -2103,7 +2367,7 @@ try {
       assert.ok(Number.isInteger(req.body.project), `create story project must be numeric, got ${req.body.project}`);
       assert.equal(req.body.projectId, undefined, 'create story must not send projectId');
       if (req.body.status !== undefined) assert.ok(Number.isInteger(req.body.status), `create story status must be numeric, got ${req.body.status}`);
-      if (req.body.milestone !== undefined) assert.ok(Number.isInteger(req.body.milestone), `create story milestone must be numeric, got ${req.body.milestone}`);
+      if (req.body.milestone !== undefined && req.body.milestone !== null) assert.ok(Number.isInteger(req.body.milestone), `create story milestone must be numeric, got ${req.body.milestone}`);
     }
 
     const taskCreates = requests.filter((r) => r.method === 'POST' && r.path === '/api/v1/tasks');
@@ -2285,7 +2549,6 @@ try {
       isWorkRecord(limitLines[1] ?? ''),
       `limit record line "${limitLines[1]}" must parse as a record`,
     );
-
     assert.notEqual(listEmptyRes.isError, true, 'empty list must not be an error');
     const emptyText = resultText(listEmptyRes);
     const emptyLines = emptyText.split('\n');
@@ -2293,6 +2556,18 @@ try {
     assert.ok(emptyLines[0]?.endsWith(': 0'), `empty list header must end in ": 0", got "${emptyLines[0]}"`);
     assert.ok(isListHeader(emptyLines[0] ?? ''), `empty list header "${emptyLines[0]}" must match list header contract`);
   });
+
+  await runContractAssertion('an unfiltered list is capped at the default page size and reports the true total', () => {
+    assert.notEqual(listCappedRes.isError, true, 'capped list must not be an error');
+    const lines = resultText(listCappedRes).split('\n');
+    assert.equal(lines.length, 51, `expected 1 header + 50 record lines, got ${lines.length}`);
+    assert.ok(
+      lines[0]?.endsWith(': 50 of 60'),
+      `header must report the page size and the full total, got "${lines[0]}"`,
+    );
+    assert.ok(isWorkRecord(lines[50] ?? ''), 'last rendered line must parse as a record');
+  });
+
   await runContractAssertion('sprints op:stats renders role-keyed and array points shapes without [object Object] or NaN', () => {
     assert.notEqual(sprintStatsRes.isError, true, 'sprints op:stats must succeed');
     const statsText = resultText(sprintStatsRes);
@@ -2462,6 +2737,17 @@ try {
       `delete with items must mention batch is create-only: "${batchText}"`,
     );
   });
+
+  await runContractAssertion('a bare numeric item is an ID only and never silently falls back to a #reference', () => {
+    assert.equal(getNumericNotFoundRes.isError, true, 'an unknown numeric ID must surface as an error');
+    const directGet = requests.filter((r) => r.method === 'GET' && r.path === '/api/v1/issues/9999');
+    assert.equal(directGet.length, 1, `stub must record exactly one direct GET for the ID, got ${directGet.length}`);
+    const refFallback = requests.filter(
+      (r) => r.method === 'GET' && r.path === '/api/v1/issues/by_ref' && r.query['ref'] === '9999',
+    );
+    assert.equal(refFallback.length, 0, `stub must record no by_ref lookup for a bare number, got ${refFallback.length}`);
+  });
+
   await runContractAssertion('rate limit 429 with Retry-After: 0 retries and succeeds on second hit', () => {
     assert.notEqual(throttleRecoverRes.isError, true, 'throttle recover tool call must succeed');
     const recoverRequests = requests.filter(
@@ -2771,6 +3057,127 @@ try {
       assert.ok(Number.isInteger(p.body.version), `task reparent PATCH must include integer version, got ${p.body.version}`);
       assert.equal(p.body.user_story, 202, `task reparent PATCH must set user_story to 202, got ${p.body.user_story}`);
     }
+  });
+
+  await runContractAssertion('work op:delete refuses an item owned by another user and issues no DELETE request', () => {
+    assert.equal(otherOwnerDeleteRes.isError, true, 'deleting another user\'s item must return isError: true');
+    const text = resultText(otherOwnerDeleteRes);
+    assert.ok(/Refusing to delete/.test(text), `error text must start with "Refusing to delete": "${text}"`);
+    assert.ok(
+      text.includes('only the creator can delete one'),
+      `error text must explain that only the creator may delete: "${text}"`,
+    );
+    const deletes = requests.filter((r) => r.method === 'DELETE' && r.path === '/api/v1/issues/103');
+    assert.equal(deletes.length, 0, `stub must record no DELETE for /api/v1/issues/103, got ${deletes.length}`);
+  });
+
+  await runContractAssertion('work op:update allows an item owned by another user when the caller is the assignee', () => {
+    assert.notEqual(assigneeUpdateRes.isError, true, `update as assignee must succeed: ${resultText(assigneeUpdateRes)}`);
+    const patch = requests.find(
+      (r) => r.method === 'PATCH' && r.path === '/api/v1/issues/104' && r.body?.subject === 'Updated Assigned Foreign Issue',
+    );
+    assert.ok(patch, 'expected PATCH /api/v1/issues/104 for the assignee update');
+    assert.ok(patch.body, 'assignee update PATCH must have body');
+    assert.ok(Number.isInteger(patch.body.version), `assignee update PATCH must include integer version, got ${patch.body.version}`);
+  });
+
+  await runContractAssertion('work op:update refuses an unassigned item owned by another user and issues no PATCH request', () => {
+    assert.equal(unassignedUpdateRes.isError, true, 'updating another user\'s unassigned item must return isError: true');
+    const text = resultText(unassignedUpdateRes);
+    assert.ok(/Refusing to update/.test(text), `error text must start with "Refusing to update": "${text}"`);
+    assert.ok(
+      text.includes('only the creator or the assignee can update one'),
+      `error text must explain that only creator or assignee may update: "${text}"`,
+    );
+    const patches = requests.filter((r) => r.method === 'PATCH' && r.path === '/api/v1/issues/103');
+    assert.equal(patches.length, 0, `stub must record no PATCH for /api/v1/issues/103, got ${patches.length}`);
+  });
+
+  await runContractAssertion('work op:update fails closed when the item reports no owner and issues no PATCH request', () => {
+    assert.equal(ownerlessUpdateRes.isError, true, 'updating an item with no reported owner must return isError: true');
+    const text = resultText(ownerlessUpdateRes);
+    assert.ok(
+      /did not report an owner/.test(text),
+      `error text must state Taiga reported no owner: "${text}"`,
+    );
+    const patches = requests.filter((r) => r.method === 'PATCH' && r.path === '/api/v1/issues/105');
+    assert.equal(patches.length, 0, `stub must record no PATCH for /api/v1/issues/105, got ${patches.length}`);
+  });
+
+  await runContractAssertion('wiki op:update and op:delete refuse a page owned by another user and issue no PATCH or DELETE', () => {
+    assert.equal(otherOwnerWikiUpdateRes.isError, true, 'updating another user\'s wiki page must return isError: true');
+    const updateText = resultText(otherOwnerWikiUpdateRes);
+    assert.ok(/Refusing to update/.test(updateText), `update error text must start with "Refusing to update": "${updateText}"`);
+
+    assert.equal(otherOwnerWikiDeleteRes.isError, true, 'deleting another user\'s wiki page must return isError: true');
+    const deleteText = resultText(otherOwnerWikiDeleteRes);
+    assert.ok(/Refusing to delete/.test(deleteText), `delete error text must start with "Refusing to delete": "${deleteText}"`);
+
+    const patches = requests.filter((r) => r.method === 'PATCH' && r.path === '/api/v1/wiki/602');
+    assert.equal(patches.length, 0, `stub must record no PATCH for /api/v1/wiki/602, got ${patches.length}`);
+    const deletes = requests.filter((r) => r.method === 'DELETE' && r.path === '/api/v1/wiki/602');
+    assert.equal(deletes.length, 0, `stub must record no DELETE for /api/v1/wiki/602, got ${deletes.length}`);
+  });
+
+  await runContractAssertion('attachments op:delete refuses an attachment owned by another user and issues no DELETE', () => {
+    assert.equal(otherOwnerAttachmentDeleteRes.isError, true, 'deleting another user\'s attachment must return isError: true');
+    const text = resultText(otherOwnerAttachmentDeleteRes);
+    assert.ok(/Refusing to delete/.test(text), `error text must start with "Refusing to delete": "${text}"`);
+    const deletes = requests.filter(
+      (r) => r.method === 'DELETE' && r.path === '/api/v1/issues/attachments/707',
+    );
+    assert.equal(deletes.length, 0, `stub must record no DELETE for attachment 707, got ${deletes.length}`);
+  });
+
+  await runContractAssertion('comments op:edit and op:delete refuse a comment authored by another user and issue no history write', () => {
+    assert.equal(otherAuthorCommentEditRes.isError, true, 'editing another user\'s comment must return isError: true');
+    const editText = resultText(otherAuthorCommentEditRes);
+    assert.ok(/Refusing to update/.test(editText), `edit error text must start with "Refusing to update": "${editText}"`);
+
+    assert.equal(otherAuthorCommentDeleteRes.isError, true, 'deleting another user\'s comment must return isError: true');
+    const deleteText = resultText(otherAuthorCommentDeleteRes);
+    assert.ok(/Refusing to delete/.test(deleteText), `delete error text must start with "Refusing to delete": "${deleteText}"`);
+
+    const foreignId = '22222222-2222-2222-2222-222222222222';
+    const editWrites = requests.filter(
+      (r) => r.method === 'POST' && r.path.includes('/edit_comment') && r.query['id'] === foreignId,
+    );
+    assert.equal(editWrites.length, 0, `stub must record no edit_comment POST for ${foreignId}, got ${editWrites.length}`);
+    const deleteWrites = requests.filter(
+      (r) => r.method === 'POST' && r.path.includes('/delete_comment') && r.query['id'] === foreignId,
+    );
+    assert.equal(deleteWrites.length, 0, `stub must record no delete_comment POST for ${foreignId}, got ${deleteWrites.length}`);
+  });
+
+  await runContractAssertion('work op:create story with no sprint defaults milestone to the current open sprint', () => {
+    assert.notEqual(defaultedSprintStoryRes.isError, true, `defaulted sprint story create must succeed: ${resultText(defaultedSprintStoryRes)}`);
+    const create = requests.find(
+      (r) => r.method === 'POST' && r.path === '/api/v1/userstories' && r.body?.subject === 'Default Sprint Story',
+    );
+    assert.ok(create, 'expected POST /api/v1/userstories for Default Sprint Story');
+    assert.ok(create.body, 'defaulted sprint create must have body');
+    assert.equal(create.body.milestone, 10, `create without sprint must default milestone to the open sprint 10 from the stub, got ${create.body.milestone}`);
+  });
+
+  await runContractAssertion('work op:create story with sprint "none" sends milestone null instead of the current sprint', () => {
+    assert.notEqual(noSprintStoryRes.isError, true, `explicit no-sprint story create must succeed: ${resultText(noSprintStoryRes)}`);
+    const create = requests.find(
+      (r) => r.method === 'POST' && r.path === '/api/v1/userstories' && r.body?.subject === 'Explicit No Sprint Story',
+    );
+    assert.ok(create, 'expected POST /api/v1/userstories for Explicit No Sprint Story');
+    assert.ok(create.body, 'explicit no-sprint create must have body');
+    assert.ok('milestone' in create.body, 'create with sprint "none" must send a milestone key');
+    assert.equal(create.body.milestone, null, `sprint "none" must send milestone null, got ${create.body.milestone}`);
+  });
+
+  await runContractAssertion('work op:create issue never defaults a sprint and sends no milestone key', () => {
+    assert.notEqual(noSprintIssueRes.isError, true, `issue create without sprint must succeed: ${resultText(noSprintIssueRes)}`);
+    const create = requests.find(
+      (r) => r.method === 'POST' && r.path === '/api/v1/issues' && r.body?.subject === 'No Sprint Issue',
+    );
+    assert.ok(create, 'expected POST /api/v1/issues for No Sprint Issue');
+    assert.ok(create.body, 'issue create must have body');
+    assert.equal('milestone' in create.body, false, `issue create must not send a milestone key, got ${JSON.stringify(create.body.milestone)}`);
   });
 
 } finally {

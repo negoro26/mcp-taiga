@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CallToolResult, ItemTypeKey, RegisteredTool, TaigaHistoryEntry, TaigaWikiPage, TaigaWorkItem, ToolAnnotations } from '../types.js';
 import { get, post } from '../api.js';
-import { itemType, patchItem, resolveItem, resolveWikiPage } from '../taiga.js';
+import { assertWritable, itemType, patchItem, resolveItem, resolveWikiPage } from '../taiga.js';
 import { commentLine, listing } from '../format.js';
 import { createSuccessResponse, guard } from '../utils.js';
 import { SUCCESS_MESSAGES } from '../constants.js';
@@ -18,13 +18,30 @@ const inputSchema = z.object({
 
 type Args = z.output<typeof inputSchema>;
 
-const description = `List, add, edit, or delete comments on issues, user stories, tasks, epics, and wiki pages. Note: Taiga soft-deletes comments on delete.
+async function assertOwnComment(
+  historyKind: string,
+  targetId: number,
+  commentId: string,
+  access: 'update' | 'delete',
+): Promise<void> {
+  const history = await get<TaigaHistoryEntry[]>(`/history/${historyKind}/${targetId}`, { type: 'comment' });
+  const entry = (Array.isArray(history) ? history : []).find((e) => e.id === commentId);
+  if (!entry) {
+    throw new Error(`Comment ${commentId} was not found on this item.`);
+  }
+  await assertWritable({ owner: entry.user?.id ?? entry.user?.pk }, `comment ${commentId}`, access);
+}
 
-| op | required args | optional args |
-| list | type, item | project, includeDeleted |
-| add | type, item, text | project |
-| edit | type, item, commentId, text | project |
-| delete | type, item, commentId | project |`;
+const description = `Read and write comments on work items and wiki pages. Taiga soft-deletes comments on delete.
+
+| op | required |
+|---|---|
+| list | type, item |
+| add | type, item, text |
+| edit | type, item, commentId, text |
+| delete | type, item, commentId |
+
+edit and delete are refused unless you wrote the comment.`;
 const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 const handler = async ({ op, type, item, project, text, commentId, includeDeleted }: Args): Promise<CallToolResult> => {
@@ -79,6 +96,7 @@ const handler = async ({ op, type, item, project, text, commentId, includeDelete
           if (!text) {
             throw new Error('Comment text is required for op "edit".');
           }
+          await assertOwnComment(meta.history, targetId, commentId, 'update');
           await post<TaigaHistoryEntry>(`/history/${meta.history}/${targetId}/edit_comment?id=${encodeURIComponent(commentId)}`, { comment: text });
           return createSuccessResponse(`${SUCCESS_MESSAGES.COMMENT_EDITED} on ${meta.label} ${ref} (comment: ${commentId}).\n\n${text}`);
         }
@@ -87,6 +105,7 @@ const handler = async ({ op, type, item, project, text, commentId, includeDelete
           if (!commentId) {
             throw new Error('commentId (UUID) is required for op "delete".');
           }
+          await assertOwnComment(meta.history, targetId, commentId, 'delete');
           await post<TaigaHistoryEntry>(`/history/${meta.history}/${targetId}/delete_comment?id=${encodeURIComponent(commentId)}`);
           return createSuccessResponse(`${SUCCESS_MESSAGES.COMMENT_DELETED} on ${meta.label} ${ref} (comment: ${commentId}).`);
         }

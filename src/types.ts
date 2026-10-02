@@ -89,6 +89,7 @@ export interface TaigaWorkItem {
   is_closed?: boolean;
   created_date?: string;
   modified_date?: string;
+  owner?: number | null;
   tags?: (string | string[])[];
   total_watchers?: number;
   watchers?: number[];
@@ -160,6 +161,7 @@ export interface TaigaAttachment {
   name?: string;
   size?: number;
   url?: string;
+  owner?: number | null;
   description?: string;
   created_date?: string;
   object_id?: number;

@@ -8,7 +8,9 @@
 
 A TypeScript MCP server for Taiga. It gives LLM clients six tools for projects, work items, sprints, comments, attachments, and wiki pages.
 
-The server uses MCP revision `2026-07-28`, native `fetch`, and either stdio or streamable HTTP.
+New to the code? Start with [FEATURES.md](FEATURES.md), which maps every behaviour to the file and symbol that owns it.
+
+The server uses MCP revision `2026-07-28` and native `fetch`, and speaks stdio only.
 
 ## Requirements
 
@@ -23,8 +25,6 @@ Set `TAIGA_API_URL` for a self-hosted instance. Include `/api/v1` in the URL.
 | `TAIGA_API_URL` | Taiga REST API base URL | `https://api.taiga.io/api/v1` |
 | `TAIGA_USERNAME` | Taiga username or email | Required |
 | `TAIGA_PASSWORD` | Taiga password | Required |
-| `TAIGA_HTTP_PORT` | Serve streamable HTTP when set | stdio |
-| `TAIGA_HTTP_HOST` | HTTP bind address | `127.0.0.1` |
 
 ## Install
 
@@ -93,35 +93,6 @@ cwd: /absolute/path/to/mcp-taiga
 
 Run `/mcp test taiga` or `/mcp list` to verify the server. OMP configuration lives in `~/.omp/agent/mcp.json`.
 
-## HTTP transport
-
-Set `TAIGA_HTTP_PORT` to serve the same tools over streamable HTTP:
-
-```bash
-TAIGA_HTTP_PORT=3000 npx -y mcp-taiga
-```
-
-The endpoint is:
-
-```text
-http://127.0.0.1:3000/mcp
-```
-
-Configure URL-based clients with:
-
-```json
-{
-  "mcpServers": {
-    "taiga": {
-      "type": "http",
-      "url": "http://127.0.0.1:3000/mcp"
-    }
-  }
-}
-```
-
-The HTTP server is stateless, validates the Host and Origin headers, and defaults to loopback. A routable bind address prints a warning because the connection is not encrypted.
-
 ## Tools
 
 The server exposes six tools and 28 operation pairs.
@@ -138,12 +109,13 @@ The server exposes six tools and 28 operation pairs.
 ### Input conventions
 
 - Projects accept a numeric ID or slug.
-- Work items accept a numeric ID or a `#reference`. A reference also needs `project`.
+- Work items accept a numeric ID or a `#reference`, and those mean different things. A bare number is always an ID; `#42` is always a reference in the given project. There is no fallback between them.
+- New user stories and tasks join the project's current open sprint unless you pass `sprint`. Pass `sprint: "none"` to create them unsprinted. Issues and epics are never placed automatically, and epics are only created or linked when you ask for one.
 - Members accept an ID, username, full name, or `me`.
 - Statuses, priorities, severities, issue types, and sprint names resolve to Taiga IDs.
 - Batch work-item creation accepts at most 20 items.
 - `attachments.download` returns metadata by default. Set `includeContent: true` to return bytes, or set `savePath` to write them locally.
-- Listings return dense plain text. Empty lists are successful results.
+- Listings return dense plain text. Empty lists are successful results. A work-item list returns at most 50 rows; its header reads `user stories in myproject: 50 of 312`, so the true total is always visible and a higher `limit` can be requested.
 
 ## Safety and reliability
 
@@ -155,6 +127,7 @@ The server exposes six tools and 28 operation pairs.
 - Attachment downloads reject redirects, cap reads at 10 MB, require the Taiga hostname, and do not send the bearer token to media hosts.
 - File downloads refuse to overwrite an existing file.
 - Deletes accept one target at a time. Batch creation does not imply batch deletion.
+- Every write checks ownership first. `work.update`, `link`, and `unlink` require you to be the item's creator or its assignee; `work.delete`, `wiki.update`, `wiki.delete`, and `attachments.delete` require you to be the creator. `comments.edit` and `comments.delete` require you to be the comment's author. A record Taiga returns without an owner is refused rather than assumed.
 
 ## Docker
 
@@ -163,14 +136,6 @@ docker build -t mcp-taiga .
 docker run --rm -i --env-file .env mcp-taiga
 ```
 
-For HTTP mode:
-
-```bash
-docker run --rm -p 127.0.0.1:3000:3000 \
-  -e TAIGA_HTTP_PORT=3000 \
-  --env-file .env \
-  mcp-taiga
-```
 
 The container uses Node.js 24 Alpine and runs as the non-root `node` user.
 
@@ -188,24 +153,35 @@ npm test
 | `npm run build` | Compile `src` and `test` into `dist` |
 | `npm run check` | Type-check without output |
 | `npm run lint` | Run the TypeScript anti-slop checks with oxlint |
-| `npm test` | Run unit, protocol, contract, and HTTP tests |
+| `npm test` | Run unit, protocol, and contract tests |
 | `npm run test:integration` | Run the live Taiga smoke test when credentials exist |
 
-The test suite covers pure helpers, the MCP stdio handshake, all tool operations against a mock Taiga server, streamable HTTP, and live Taiga reads.
+The test suite covers pure helpers, the MCP stdio handshake, and all tool operations against a mock Taiga server. Live Taiga reads are covered by the optional integration smoke test.
 
 ## Project layout
 
 ```text
-src/index.ts             server entrypoint and transport selection
-src/http.ts              streamable HTTP transport
-src/api.ts               authenticated fetch transport and cache
-src/taiga.ts             Taiga domain resolution and patching
-src/tools/*.ts           six tool implementations
-test/apiContractTest.ts  mock Taiga contract tests
-test/protocolTest.ts     stdio MCP tests
-test/httpTest.ts         HTTP MCP tests
-test/integration.ts      live Taiga smoke test
+src/index.ts             entrypoint: reads .env, registers the six tools, speaks stdio
+src/api.ts               the only file that knows URLs and tokens; auth, retry, cache
+src/taiga.ts             resolves names to ids and holds every rule about Taiga
+src/format.ts            turns records into plain text responses
+src/utils.ts             success and error response shapes
+src/constants.ts         API paths, limits, and fixed messages
+src/types.ts             TypeScript shapes for Taiga's JSON
+src/tools/index.ts       the six tools, registered in order
+src/tools/projects.ts    projects: list, get, whoami
+src/tools/work.ts        work items: list, get, create, update, link, unlink, delete
+src/tools/sprints.ts     sprints: list, get, stats, create
+src/tools/comments.ts    comments: list, add, edit, delete
+src/tools/attachments.ts attachments: list, upload, download, delete
+src/tools/wiki.ts        wiki pages: list, get, create, update, delete, watch
+test/unitTest.ts         pure helpers in isolation
+test/protocolTest.ts     the MCP handshake over stdio
+test/apiContractTest.ts  every tool op against an in-process fake Taiga
+test/integration.ts      live Taiga reads, only when credentials are set
 ```
+
+Comments are banned in source and enforced by the `anti-slop/no-comments` lint rule. Reasoning lives in [FEATURES.md](FEATURES.md) instead, which also maps each behaviour to the symbol that owns it. See [AGENTS.md](AGENTS.md) for the rules that apply to code changes.
 
 ## Contributing
 

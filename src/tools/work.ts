@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { del, get, post } from '../api.js';
-import { API_ENDPOINTS, ERROR_MESSAGES, MAX_BATCH_SIZE } from '../constants.js';
+import { API_ENDPOINTS, ERROR_MESSAGES, MAX_BATCH_SIZE, MAX_LIST_ROWS } from '../constants.js';
 import { assignees, day, details, listing, workLine } from '../format.js';
 import {
+  assertWritable,
+  currentSprintId,
   findIdByName,
   ITEM_TYPES,
-  itemType,
   listTaxonomy,
   patchItem,
   projectUserNames,
@@ -33,33 +34,24 @@ import { createSuccessResponse, guard } from '../utils.js';
 
 type WorkType = 'issue' | 'story' | 'task' | 'epic';
 
-const TYPE_MAP = {
-  issue: 'issue',
-  story: 'user_story',
-  task: 'task',
-  epic: 'epic',
-} satisfies Record<WorkType, ItemTypeKey>;
-
-const TYPE_PLURAL = {
-  issue: 'issues',
-  story: 'user stories',
-  task: 'tasks',
-  epic: 'epics',
-} satisfies Record<WorkType, string>;
-
-const STATUS_KIND = {
-  issue: 'issue_status',
-  story: 'user_story_status',
-  task: 'task_status',
-  epic: 'epic_status',
-} satisfies Record<WorkType, TaxonomyKind>;
-
-const TYPE_FIELDS = {
-  issue: new Set(['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'priority', 'severity', 'issueType']),
-  story: new Set(['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'points']),
-  task: new Set(['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'parent']),
-  epic: new Set(['subject', 'description', 'status', 'assignee', 'tags', 'color']),
-} satisfies Record<WorkType, Set<string>>;
+const TYPES = {
+  issue: {
+    key: 'issue', plural: 'issues', statusKind: 'issue_status',
+    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'priority', 'severity', 'issueType'],
+  },
+  story: {
+    key: 'user_story', plural: 'user stories', statusKind: 'user_story_status',
+    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'points'],
+  },
+  task: {
+    key: 'task', plural: 'tasks', statusKind: 'task_status',
+    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'parent'],
+  },
+  epic: {
+    key: 'epic', plural: 'epics', statusKind: 'epic_status',
+    fields: ['subject', 'description', 'status', 'assignee', 'tags', 'color'],
+  },
+} satisfies Record<WorkType, { key: ItemTypeKey; plural: string; statusKind: TaxonomyKind; fields: string[] }>;
 
 interface FilterOptions {
   assignee?: string;
@@ -94,7 +86,7 @@ async function buildFilters(type: WorkType, projectId: number, filters: FilterOp
   }
 
   if (filters.status !== undefined) {
-    params.status = await resolveTaxonomyId(STATUS_KIND[type], projectId, filters.status);
+    params.status = await resolveTaxonomyId(TYPES[type].statusKind, projectId, filters.status);
   }
 
   if (filters.tags !== undefined) {
@@ -161,9 +153,9 @@ async function buildPayload(
   storyCache: Map<string, TaigaWorkItem> | null = null,
   defaultParent: number | string | null = null,
 ): Promise<JsonBody> {
-  const allowed = TYPE_FIELDS[type];
+  const allowed = TYPES[type].fields;
   for (const key of Object.keys(fields)) {
-    if (fields[key] === undefined || allowed.has(key)) continue;
+    if (fields[key] === undefined || allowed.includes(key)) continue;
     if (key === 'parent' && type === 'story') {
       throw new Error('A story\'s epic cannot be set with update. Use op "link" or "unlink" with parent set to the epic.');
     }
@@ -187,7 +179,7 @@ async function buildPayload(
       }
       payload.status = id;
     } else {
-      payload.status = await resolveTaxonomyId(STATUS_KIND[type], projectId, fields.status);
+      payload.status = await resolveTaxonomyId(TYPES[type].statusKind, projectId, fields.status);
     }
   }
 
@@ -298,7 +290,7 @@ const inputSchema = z.object({
   points: z
     .union([z.number(), z.string()])
     .optional()
-    .describe('Points value matching project point deck (e.g. 1, 3, 5, or "?" for unestimated; stories only)'),
+    .describe('Points from the project deck: 1, 3, 5, or "?" for unestimated (stories only)'),
   parent: z.union([z.number().int(), z.string()]).optional().describe('Parent story (tasks) or epic (link/unlink)'),
   items: z
     .array(z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())])))
@@ -309,23 +301,24 @@ const inputSchema = z.object({
   closed: z.boolean().optional().describe('Filter by closed state'),
   q: z.string().optional().describe('Full-text search query'),
   orderBy: z.string().optional().describe('Order by field, prefix "-" for desc'),
-  limit: z.number().int().positive().optional().describe('Maximum number of items to return'),
+  limit: z.number().int().positive().optional().describe(`Rows to return, default ${MAX_LIST_ROWS}; the header always reports the full total`),
 });
 
 type Args = z.output<typeof inputSchema>;
 
 const description = `Manage Taiga work items (issues, user stories, tasks, epics).
 
-Operations:
-- list: List items with optional filters (project required).
-- get: Get details for a single item (item required).
-- create: Create one item or batch items (project and subject/items required).
-- update: Modify fields on an item (item required).
-- link: Link a user story to an epic (type: story, item: story, parent: epic required).
-- unlink: Remove a user story from an epic (type: story, item: story, parent: epic required).
-- delete: Permanently delete ONE item (item required). Taiga has no trash for work items, so this cannot be
-  undone. Batch is deliberately create-only: up to 20 items can be created in a call, exactly one can be
-  deleted, so a mistaken call cannot clear a board.`;
+| op | required |
+|---|---|
+| list | type, project |
+| get | type, item |
+| create | type, project, subject or items |
+| update | type, item |
+| link, unlink | type: story, item: story, parent: epic |
+| delete | type, item |
+
+Stories and tasks join the current open sprint unless you pass sprint; "none" leaves them unsprinted. Create an epic or use link only when one already exists.
+update needs you to be the creator or the assignee. delete needs you to be the creator, takes one item, and is permanent.`;
 
 const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
@@ -352,18 +345,19 @@ const handler = async ({
   orderBy,
   limit,
 }: Args): Promise<CallToolResult> => {
-  const internalKey = TYPE_MAP[type];
+  const { key: internalKey, plural } = TYPES[type];
+  const meta = ITEM_TYPES[internalKey];
 
   if (op === 'list') {
     if (!project) throw new Error(ERROR_MESSAGES.MISSING_PROJECT_ID);
     const projectId = await resolveProjectId(project);
     const params = await buildFilters(type, projectId, { assignee, watcher, sprint, status, tags, closed, q, orderBy, parent });
-    const all = await get<TaigaWorkItem[]>(ITEM_TYPES[internalKey].path, params);
-    const rows = limit ? all.slice(0, limit) : all;
+    const all = await get<TaigaWorkItem[]>(meta.path, params);
+    const rows = all.slice(0, limit ?? MAX_LIST_ROWS);
     const hasMulti = rows.some((r) => Array.isArray(r.assigned_users) && r.assigned_users.length > 1);
     const namesById = hasMulti ? await projectUserNames(projectId) : undefined;
     return createSuccessResponse(
-      listing(`${TYPE_PLURAL[type]} in ${project}`, rows.map((r) => workLine(r, namesById)), all.length),
+      listing(`${plural} in ${project}`, rows.map((r) => workLine(r, namesById)), all.length),
     );
   }
 
@@ -411,13 +405,15 @@ const handler = async ({
       const createdList: TaigaWorkItem[] = [];
       const failedList: BatchItemFailure[] = [];
 
+      const defaultSprint = type === 'story' || type === 'task' ? await currentSprintId(projectId) : undefined;
       for (const it of items) {
         try {
           const payload = await buildPayload(type, projectId, it, taxonomyCache, storyCache, parent);
+          if (payload.milestone === undefined && defaultSprint !== undefined) payload.milestone = defaultSprint;
           payload.project = projectId;
           if (!payload.subject) throw new Error('Subject is required');
           if (type === 'task' && !payload.user_story) throw new Error('Parent user story is required');
-          const created = await post<TaigaWorkItem>(ITEM_TYPES[internalKey].path, payload);
+          const created = await post<TaigaWorkItem>(meta.path, payload);
           createdList.push(created);
         } catch (err) {
           failedList.push({ item: it, error: err instanceof Error ? err.message : String(err) });
@@ -426,10 +422,10 @@ const handler = async ({
 
       if (createdList.length === 0) {
         const errDetails = failedList.map((f) => `- ${f.item.subject || 'item'}: ${f.error}`).join('\n');
-        throw new Error(`All ${items.length} ${TYPE_PLURAL[type]} failed to create:\n${errDetails}`);
+        throw new Error(`All ${items.length} ${plural} failed to create:\n${errDetails}`);
       }
 
-      const lines = [`Batch created ${createdList.length} ${TYPE_PLURAL[type]} (${failedList.length} failed):`];
+      const lines = [`Batch created ${createdList.length} ${plural} (${failedList.length} failed):`];
       for (const c of createdList) {
         lines.push(workLine(c));
       }
@@ -461,13 +457,17 @@ const handler = async ({
       parent,
     });
     payload.project = projectId;
-    const created = await post<TaigaWorkItem>(ITEM_TYPES[internalKey].path, payload);
-    return createSuccessResponse(`Created ${itemType(internalKey).label.toLowerCase()}:\n${workLine(created)}`);
+    if (payload.milestone === undefined && (type === 'story' || type === 'task')) {
+      payload.milestone = await currentSprintId(projectId);
+    }
+    const created = await post<TaigaWorkItem>(meta.path, payload);
+    return createSuccessResponse(`Created ${meta.label.toLowerCase()}:\n${workLine(created)}`);
   }
 
   if (op === 'update') {
     if (!item) throw new Error('Item identifier is required for update operation.');
     const existing = await resolveItem(internalKey, item, project);
+    await assertWritable(existing, `${meta.label.toLowerCase()} #${existing.ref ?? existing.id}`, 'update');
     const projectId = existing.project;
     if (projectId === undefined) throw new Error('Work item has no project ID.');
     const payload = await buildPayload(type, projectId, {
@@ -485,7 +485,7 @@ const handler = async ({
     });
     if (Object.keys(payload).length === 0) throw new Error('No fields provided to update.');
     const updated = await patchItem<TaigaWorkItem>(internalKey, existing, payload);
-    return createSuccessResponse(`Updated ${itemType(internalKey).label.toLowerCase()}:\n${workLine(updated)}`);
+    return createSuccessResponse(`Updated ${meta.label.toLowerCase()}:\n${workLine(updated)}`);
   }
 
   if (op === 'link') {
@@ -493,6 +493,7 @@ const handler = async ({
     if (!item) throw new Error('Item (user story) is required for link operation.');
     if (!parent) throw new Error('Parent (epic) is required for link operation.');
     const story = await resolveItem('user_story', item, project);
+    await assertWritable(story, `user story #${story.ref ?? story.id}`, 'update');
     const epic = await resolveItem('epic', parent, project || story.project);
     await post<TaigaWorkItem>(`${API_ENDPOINTS.EPICS}/${epic.id}/related_userstories`, { epic: epic.id, user_story: story.id });
     return createSuccessResponse(`Linked user story #${story.ref} "${story.subject}" to epic #${epic.ref} "${epic.subject}"`);
@@ -503,6 +504,7 @@ const handler = async ({
     if (!item) throw new Error('Item (user story) is required for unlink operation.');
     if (!parent) throw new Error('Parent (epic) is required for unlink operation.');
     const story = await resolveItem('user_story', item, project);
+    await assertWritable(story, `user story #${story.ref ?? story.id}`, 'update');
     const epic = await resolveItem('epic', parent, project || story.project);
     await del<void>(`${API_ENDPOINTS.EPICS}/${epic.id}/related_userstories/${story.id}`);
     return createSuccessResponse(`Unlinked user story #${story.ref} "${story.subject}" from epic #${epic.ref} "${epic.subject}"`);
@@ -514,9 +516,10 @@ const handler = async ({
       throw new Error('Delete takes exactly one item. Batch is create-only, so a single mistaken call cannot clear a board.');
     }
     const doomed = await resolveItem(internalKey, item, project);
-    await del<void>(`${ITEM_TYPES[internalKey].path}/${doomed.id}`);
+    await assertWritable(doomed, `${meta.label.toLowerCase()} #${doomed.ref ?? doomed.id}`, 'delete');
+    await del<void>(`${meta.path}/${doomed.id}`);
     return createSuccessResponse(
-      `Deleted ${itemType(internalKey).label.toLowerCase()} #${doomed.ref} "${doomed.subject}" (id=${doomed.id}). This is permanent.`,
+      `Deleted ${meta.label.toLowerCase()} #${doomed.ref} "${doomed.subject}" (id=${doomed.id}). This is permanent.`,
     );
   }
 

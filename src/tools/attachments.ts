@@ -2,7 +2,7 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { z } from 'zod';
 import { apiBaseUrl, get, del, request } from '../api.js';
-import { resolveItem, itemType, resolveWikiPage } from '../taiga.js';
+import { assertWritable, resolveItem, itemType, resolveWikiPage } from '../taiga.js';
 import { createSuccessResponse, guard } from '../utils.js';
 import { attachmentLine, details, listing } from '../format.js';
 import { MAX_ATTACHMENT_BYTES } from '../constants.js';
@@ -75,25 +75,27 @@ const inputSchema = z.object({
   item: z.union([z.string(), z.number()]).optional().describe('Item numeric ID, #ref, or wiki slug'),
   project: z.union([z.string(), z.number()]).optional().describe('Project ID or slug (required for #ref or wiki slug)'),
   attachmentId: z.union([z.string(), z.number()]).optional().describe('Attachment ID for download or delete'),
-  filePath: z.string().optional().describe('Local file path on the machine running this server to upload to the Taiga host (the omp harness resolves local:// URIs to filesystem paths before invoking this tool)'),
+  filePath: z.string().optional().describe('Local file path to upload from'),
   fileContent: z.string().optional().describe('Base64-encoded file content to upload'),
   fileName: z.string().optional().describe('File name including extension'),
   mimeType: z.string().optional().describe('MIME type of uploaded file'),
   description: z.string().optional().describe('Attachment description text'),
   savePath: z.string().optional().describe('Local filesystem path to save downloaded file'),
-  includeContent: z.boolean().optional().describe('Include file bytes in the response (default false; use savePath to write a file)'),
+  includeContent: z.boolean().optional().describe('Return file bytes instead of metadata'),
 });
 
 type Args = z.output<typeof inputSchema>;
 
-const description = `List, upload, download, or delete attachments across work items and wiki pages.
+const description = `Manage attachments on work items and wiki pages. type is issue, story, task, epic, or wiki.
 
-| op | required args | optional args | notes |
-|---|---|---|---|
-| list | type, item | project | List attachments on a work item or wiki page |
-| upload | type, item, filePath OR fileContent | project, fileName, mimeType, description | Upload file to Taiga host from local path (harness resolves local:// URIs) or base64 |
-| download | type, attachmentId | savePath, includeContent | Metadata by default; set includeContent true to return bytes, or savePath to write them to disk |
-| delete | type, attachmentId | | Delete attachment by ID |`;
+| op | required |
+|---|---|
+| list | type, item |
+| upload | type, item, and exactly one of filePath or fileContent |
+| download | type, attachmentId |
+| delete | type, attachmentId |
+
+download returns metadata unless includeContent is true or savePath is set. delete is refused unless you uploaded the file.`;
 const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 const handler = async ({
@@ -305,6 +307,8 @@ const handler = async ({
 
         const targetType: ItemTypeKey = type === 'story' ? 'user_story' : type;
         const meta = itemType(targetType);
+        const attachment = await get<TaigaAttachment>(`${meta.attachments}/${id}`);
+        await assertWritable(attachment, `attachment ${id}`, 'delete');
         await del(`${meta.attachments}/${id}`);
         return createSuccessResponse(`Deleted attachment ${id}`);
       }

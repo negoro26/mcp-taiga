@@ -17,15 +17,17 @@ const inputSchema = z.object({
 
 type Args = z.output<typeof inputSchema>;
 
-const description = `Manage Taiga sprints (milestones): list, inspect, create, or fetch statistics.
+const description = `Manage Taiga sprints (milestones).
 
-Operations:
-- list: List sprints in a project. Requires project.
-- get: Get sprint details and assigned stories. Requires sprint (ID or name); project required if sprint is a name.
-- stats: Get sprint progress statistics and metrics. Requires sprint; project required if sprint is a name.
+| op | required |
+|---|---|
+| list | project |
+| get, stats | sprint |
+| create | project, name |
 
-Sprint deletion is intentionally not exposed: removing a milestone detaches every story and task on it, so it
-is a board-wide edit that belongs in the Taiga UI. Delete individual work items with the work tool instead.`;
+project is required when sprint is a name.
+
+Sprint deletion is not exposed: removing a milestone detaches every story and task on it. Delete work items with the work tool instead.`;
 
 const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 

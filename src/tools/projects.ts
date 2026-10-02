@@ -14,15 +14,13 @@ const inputSchema = z.object({
 
 type Args = z.output<typeof inputSchema>;
 
-const description = `List or inspect Taiga projects and verify credentials.
+const description = `List or inspect Taiga projects and verify credentials. Credentials come from TAIGA_USERNAME and TAIGA_PASSWORD.
 
-Credentials come from TAIGA_USERNAME and TAIGA_PASSWORD in the environment; the server authenticates on first use. Use whoami to verify them.
-
-| op | required args | optional args | notes |
-|---|---|---|---|
-| list | | | List projects where authenticated user is member |
-| get | project | | Inspect project metadata, owner, member count, active modules |
-| whoami | | | Verify credentials and show current user info |`;
+| op | required | notes |
+|---|---|---|
+| list | | Projects where you are a member |
+| get | project | Metadata, owner, member count, active modules |
+| whoami | | The authenticated user |`;
 
 const annotations: ToolAnnotations = { readOnlyHint: true, idempotentHint: true, openWorldHint: true };
 
