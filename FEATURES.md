@@ -66,7 +66,7 @@ Each file exports one `tools` array holding a single tool definition with `name`
 
 | Behaviour | Symbol | File |
 | --- | --- | --- |
-| only the creator may delete; creator or assignee may update; `comments.add`, `attachments.upload` and `wiki.watch` are exempt | `assertWritable` | `src/taiga.ts` |
+| only the creator may delete; creator or assignee may update; `attachments.delete` needs the uploader; `comments.add` and `attachments.upload` are exempt | `assertWritable` | `src/taiga.ts` |
 | new stories and tasks join the current open sprint | `currentSprintId` | `src/taiga.ts` |
 | points need a value from the project point deck | `resolvePointsPayload` | `src/taiga.ts` |
 | a relationship target must sit in the same project as the item being changed | `assertSameProject` | `src/taiga.ts` |
@@ -110,7 +110,7 @@ Every response is plain text built in `src/format.ts`. `listing` produces a coun
 | `test/apiContractTest.ts` | every tool op against an in-process fake Taiga server |
 | `test/integration.ts` | live Taiga reads, only when credentials are set |
 
-`test/apiContractTest.ts` fakes `src/api.ts` and nothing above it, so every layer above the HTTP boundary runs for real. A check that asserts no DELETE was recorded proves the write never left the process.
+`test/apiContractTest.ts` runs the server for real against an in-process HTTP stub standing in for Taiga, so `src/api.ts` executes over a real socket and every layer above it runs unmodified. A check that asserts no DELETE was recorded proves the write never left the process.
 
 ## Working rules
 
