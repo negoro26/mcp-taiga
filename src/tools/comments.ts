@@ -41,7 +41,7 @@ const description = `Read and write comments on work items and wiki pages. Taiga
 | edit | type, item, commentId, text |
 | delete | type, item, commentId |
 
-edit and delete are refused unless you wrote the comment.`;
+edit and delete are refused unless you wrote the comment. add is open to any item you can see, since commenting on a colleague's work is the point; it does bump that item's version.`;
 const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 const handler = async ({ op, type, item, project, text, commentId, includeDeleted }: Args): Promise<CallToolResult> => {

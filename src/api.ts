@@ -119,6 +119,7 @@ export async function login(username: string, password: string): Promise<AuthRes
     const data = await parseResponse<AuthResponse>(response);
     token = data.auth_token;
     tokenExpiresAt = Date.now() + 12 * 60 * 60 * 1000;
+  clearMetadata();
     return data;
   } catch (error) {
     token = null;
@@ -130,7 +131,7 @@ export async function login(username: string, password: string): Promise<AuthRes
 async function getToken(): Promise<string> {
   if (token && Date.now() < tokenExpiresAt) return token;
   if (!isConfigured()) {
-    throw new Error('Taiga credentials missing: set TAIGA_USERNAME and TAIGA_PASSWORD, or call the authenticate tool.');
+    throw new Error('Taiga credentials missing: set TAIGA_USERNAME and TAIGA_PASSWORD in the server environment.');
   }
   await login(process.env.TAIGA_USERNAME ?? '', process.env.TAIGA_PASSWORD ?? '');
   if (!token) {

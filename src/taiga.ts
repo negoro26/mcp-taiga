@@ -231,13 +231,25 @@ export async function currentSprintId(projectId: number): Promise<number | null>
   const sprints = await get<TaigaMilestone[]>(API_ENDPOINTS.MILESTONES, { project: projectId });
   const open = sprints.filter((s) => s.closed !== true);
   if (open.length === 0) return null;
-  const today = new Date().toISOString().slice(0, 10);
-  const covering = open.find((s) => s.estimated_start !== undefined && s.estimated_start !== null
-    && s.estimated_start.slice(0, 10) <= today
-    && today <= (s.estimated_finish ?? '9999-12-31').slice(0, 10));
-  if (covering) return covering.id;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const start = (s: TaigaMilestone): string => s.estimated_start ?? '';
-  return [...open].sort((a, b) => start(b).localeCompare(start(a)))[0]?.id ?? null;
+  const latestFirst = [...open].sort((a, b) => start(b).localeCompare(start(a)));
+  const covering = latestFirst.find((s) => start(s) !== ''
+    && start(s).slice(0, 10) <= today
+    && today <= (s.estimated_finish ?? '9999-12-31').slice(0, 10));
+  return (covering ?? latestFirst[0])?.id ?? null;
+}
+
+export function assertSameProject(
+  record: { project?: number | null },
+  expected: number | null | undefined,
+  label: string,
+): void {
+  const project = record.project;
+  if (project === undefined || project === null || project !== expected) {
+    throw new Error(`Refusing to use ${label}: Taiga did not report which project it is in, or it is in a different project from the item being changed.`);
+  }
 }
 
 export async function resolvePointsPayload(projectId: number, points: string | number): Promise<Record<string, number>> {

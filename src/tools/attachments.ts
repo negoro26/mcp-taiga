@@ -95,7 +95,7 @@ const description = `Manage attachments on work items and wiki pages. type is is
 | download | type, attachmentId |
 | delete | type, attachmentId |
 
-download returns metadata unless includeContent is true or savePath is set. delete is refused unless you uploaded the file.`;
+download returns metadata unless includeContent is true or savePath is set. delete is refused unless you uploaded the file. upload is open to any item you can see, since attaching a file to a colleague's item is the point.`;
 const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 const handler = async ({

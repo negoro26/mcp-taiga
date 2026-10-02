@@ -3,6 +3,7 @@ import { del, get, post } from '../api.js';
 import { API_ENDPOINTS, ERROR_MESSAGES, MAX_BATCH_SIZE, MAX_LIST_ROWS } from '../constants.js';
 import { assignees, day, details, listing, workLine } from '../format.js';
 import {
+  assertSameProject,
   assertWritable,
   currentSprintId,
   findIdByName,
@@ -152,6 +153,7 @@ async function buildPayload(
   taxonomyCache: TaxonomyCache | null = null,
   storyCache: Map<string, TaigaWorkItem> | null = null,
   defaultParent: number | string | null = null,
+  defaultSprint: number | null | undefined = undefined,
 ): Promise<JsonBody> {
   const allowed = TYPES[type].fields;
   for (const key of Object.keys(fields)) {
@@ -225,6 +227,8 @@ async function buildPayload(
 
   if (fields.sprint !== undefined) {
     payload.milestone = await resolveSprintId(projectId, fields.sprint);
+  } else if (defaultSprint !== undefined) {
+    payload.milestone = defaultSprint;
   }
 
   if (type === 'task') {
@@ -236,6 +240,7 @@ async function buildPayload(
         story = await resolveItem('user_story', parentIdent, projectId);
         if (storyCache) storyCache.set(cacheKey, story);
       }
+      assertSameProject(story, projectId, `user story #${story.ref ?? story.id}`);
       payload.user_story = story.id;
     }
   }
@@ -405,11 +410,13 @@ const handler = async ({
       const createdList: TaigaWorkItem[] = [];
       const failedList: BatchItemFailure[] = [];
 
-      const defaultSprint = type === 'story' || type === 'task' ? await currentSprintId(projectId) : undefined;
+      let batchSprint: number | null | undefined;
+      if (type === 'story' || type === 'task') {
+        batchSprint = sprint !== undefined ? await resolveSprintId(projectId, sprint) : await currentSprintId(projectId);
+      }
       for (const it of items) {
         try {
-          const payload = await buildPayload(type, projectId, it, taxonomyCache, storyCache, parent);
-          if (payload.milestone === undefined && defaultSprint !== undefined) payload.milestone = defaultSprint;
+          const payload = await buildPayload(type, projectId, it, taxonomyCache, storyCache, parent, batchSprint);
           payload.project = projectId;
           if (!payload.subject) throw new Error('Subject is required');
           if (type === 'task' && !payload.user_story) throw new Error('Parent user story is required');
@@ -443,6 +450,11 @@ const handler = async ({
     if (!subject) throw new Error('Subject is required to create a work item.');
     if (type === 'task' && !parent) throw new Error('Parent user story is required to create a task.');
 
+    let singleSprint: number | null | undefined;
+    if (sprint === undefined && (type === 'story' || type === 'task')) {
+      singleSprint = await currentSprintId(projectId);
+    }
+
     const payload = await buildPayload(type, projectId, {
       subject,
       description,
@@ -457,9 +469,7 @@ const handler = async ({
       parent,
     });
     payload.project = projectId;
-    if (payload.milestone === undefined && (type === 'story' || type === 'task')) {
-      payload.milestone = await currentSprintId(projectId);
-    }
+    if (payload.milestone === undefined && singleSprint !== undefined) payload.milestone = singleSprint;
     const created = await post<TaigaWorkItem>(meta.path, payload);
     return createSuccessResponse(`Created ${meta.label.toLowerCase()}:\n${workLine(created)}`);
   }
@@ -495,6 +505,7 @@ const handler = async ({
     const story = await resolveItem('user_story', item, project);
     await assertWritable(story, `user story #${story.ref ?? story.id}`, 'update');
     const epic = await resolveItem('epic', parent, project || story.project);
+    assertSameProject(epic, story.project, `epic #${epic.ref ?? epic.id}`);
     await post<TaigaWorkItem>(`${API_ENDPOINTS.EPICS}/${epic.id}/related_userstories`, { epic: epic.id, user_story: story.id });
     return createSuccessResponse(`Linked user story #${story.ref} "${story.subject}" to epic #${epic.ref} "${epic.subject}"`);
   }
@@ -506,6 +517,7 @@ const handler = async ({
     const story = await resolveItem('user_story', item, project);
     await assertWritable(story, `user story #${story.ref ?? story.id}`, 'update');
     const epic = await resolveItem('epic', parent, project || story.project);
+    assertSameProject(epic, story.project, `epic #${epic.ref ?? epic.id}`);
     await del<void>(`${API_ENDPOINTS.EPICS}/${epic.id}/related_userstories/${story.id}`);
     return createSuccessResponse(`Unlinked user story #${story.ref} "${story.subject}" from epic #${epic.ref} "${epic.subject}"`);
   }

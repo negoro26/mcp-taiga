@@ -127,7 +127,8 @@ The server exposes six tools and 28 operation pairs.
 - Attachment downloads reject redirects, cap reads at 10 MB, require the Taiga hostname, and do not send the bearer token to media hosts.
 - File downloads refuse to overwrite an existing file.
 - Deletes accept one target at a time. Batch creation does not imply batch deletion.
-- Every write checks ownership first. `work.update`, `link`, and `unlink` require you to be the item's creator or its assignee; `work.delete`, `wiki.update`, `wiki.delete`, and `attachments.delete` require you to be the creator. `comments.edit` and `comments.delete` require you to be the comment's author. A record Taiga returns without an owner is refused rather than assumed.
+- Writes to someone else's work are refused before the request is sent. `work.update`, `link`, and `unlink` require you to be the item's creator or its assignee; `work.delete`, `wiki.update`, `wiki.delete`, and `attachments.delete` require you to be the creator; `comments.edit` and `comments.delete` require you to be the comment's author. A record Taiga returns without an owner is refused rather than assumed, and a relationship target must sit in the same project as the item being changed.
+- Three operations are deliberately exempt because they are additive and collaborative: `comments.add`, `attachments.upload`, and `wiki.watch`. Guarding them would make the server unusable on a shared board. Note that `comments.add` PATCHes the item, which bumps its version, so an agent commenting on a colleague's item can cause a save conflict for a human working in the Taiga UI at that moment.
 
 ## Docker
 

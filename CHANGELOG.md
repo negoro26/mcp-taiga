@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Added
 
-- Ownership checks on every mutating operation. `work.update`, `link`, and `unlink` allow the creator or the assignee; `work.delete`, `wiki.update`, `wiki.delete`, and `attachments.delete` allow only the creator; `comments.edit` and `comments.delete` allow only the comment's author. Records Taiga returns without an owner are refused instead of written.
+- Ownership checks on the writes that change or remove existing work. `work.update`, `link`, and `unlink` allow the creator or the assignee; `work.delete`, `wiki.update`, and `wiki.delete` allow only the creator; `attachments.delete` allows only the file's uploader; `comments.edit` and `comments.delete` allow only the comment's author. Records Taiga returns without an owner are refused instead of written. `comments.add` and `attachments.upload` are deliberately left open, since commenting on and attaching files to a colleague's item is the point of a shared board.
 - `FEATURES.md`, a map from every behaviour to the file and symbol that owns it, plus `AGENTS.md` for coding agents. Both are linked from the README and CONTRIBUTING guide.
 - An `anti-slop/no-comments` lint rule that fails the build on any comment in `src` or `test`, so reasoning lives in `FEATURES.md` instead of in the source.
 
@@ -28,6 +28,11 @@ All notable changes to this project are documented in this file. The format is b
 ### Fixed
 
 - A bare numeric `item` is now always an ID and `#42` is always a reference. Previously a bare number that returned 404 was silently retried as a reference in the supplied project, so one argument could resolve to two different items depending on what Taiga happened to contain, and deleting the wrong one was possible when that wrong item happened to be yours.
+- Batch `work.create` honours a top-level `sprint`. It was destructured and then never passed to the payload builder, so `sprint: "none"` in a batch stamped every new item with the current sprint instead of leaving it unsprinted.
+- `work.link`, `work.unlink`, and a task's `parent` now require the relationship target to sit in the same project as the item being changed. `resolveItem` resolves a bare numeric identifier without consulting the project argument, so a target in an unrelated project was previously reachable. The check fails closed when Taiga omits the project field.
+- The credentials error no longer tells the user to call an `authenticate` tool, which has never been registered. It names only the environment variables, which are the sole supported mechanism.
+- `currentSprintId` picks the same sprint regardless of the order Taiga returns overlapping open sprints, and compares against the local date rather than UTC so a user far from Greenwich is not placed in yesterday's sprint.
+- Logging in clears the metadata cache, so a future re-authentication cannot leave ownership checks comparing against the previous identity.
 
 ### Removed
 

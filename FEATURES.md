@@ -6,7 +6,7 @@ Symbols are named, not line numbered, because symbols survive edits and line num
 
 ## The one rule that explains the layout
 
-**`src/api.ts` is the only file that knows a URL, a hostname, or a token exists.** No tool file writes one. When you read `src/tools/*.ts` you will never see HTTP. When you read `src/api.ts` you will never see what a task is. `src/taiga.ts` is the seam between the two, which is why every rule about Taiga meaning lives there.
+**`src/api.ts` owns authentication, retries and caching, and it is where the bearer token lives.** Tool files never write a token or a hostname. The one exception is `attachments.download`, which fetches bytes from the media URL and so branches on the protocol and calls the Taiga base URL directly. `src/taiga.ts` is the seam between transport and meaning, which is why every rule about Taiga semantics lives there.
 
 ```text
 src/index.ts        process entry: load .env, build the server, hand over to stdio
@@ -66,10 +66,11 @@ Each file exports one `tools` array holding a single tool definition with `name`
 
 | Behaviour | Symbol | File |
 | --- | --- | --- |
-| only the creator may delete; creator or assignee may update | `assertWritable` | `src/taiga.ts` |
+| only the creator may delete; creator or assignee may update; `comments.add`, `attachments.upload` and `wiki.watch` are exempt | `assertWritable` | `src/taiga.ts` |
 | new stories and tasks join the current open sprint | `currentSprintId` | `src/taiga.ts` |
 | points need a value from the project point deck | `resolvePointsPayload` | `src/taiga.ts` |
-| an epic needs a slug-safe name and colour | `ITEM_TYPES` | `src/taiga.ts` |
+| a relationship target must sit in the same project as the item being changed | `assertSameProject` | `src/taiga.ts` |
+| an epic takes a colour, unlike the other work types | `TYPES.epic.fields` | `src/tools/work.ts` |
 | batch creation is capped at 20 items | `MAX_BATCH_SIZE` | `src/constants.ts` |
 | delete accepts exactly one item | `handler`, the `delete` branch | `src/tools/work.ts` |
 | sprint deletion is not offered | `inputSchema` | `src/tools/sprints.ts` |
