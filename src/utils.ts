@@ -1,5 +1,3 @@
-
-import { STATUS_LABELS } from './constants.js';
 import type { CallToolResult } from './types.js';
 
 export function createSuccessResponse(text: string): CallToolResult {
@@ -21,20 +19,8 @@ export function guard<A>(handler: (args: A) => Promise<CallToolResult>): (args: 
   };
 }
 
-export function formatDate(dateString?: string | null): string {
-  if (!dateString) return STATUS_LABELS.NOT_SET;
-  return new Date(dateString).toISOString().slice(0, 10);
-}
-
 export function calculateCompletionPercentage(completed: number, total: number): number {
   if (!total) return 0;
   return Math.round((completed / total) * 100);
 }
 
-export function getStatusLabel(closed?: boolean): string {
-  return closed ? STATUS_LABELS.CLOSED : STATUS_LABELS.ACTIVE;
-}
-
-export function getSafeValue(value: string | number | null | undefined, defaultValue: string = STATUS_LABELS.UNKNOWN): string {
-  return String(value || defaultValue);
-}

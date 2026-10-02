@@ -86,16 +86,7 @@ export async function resolveItem(
   if (!isNumericId(raw)) {
     throw new Error(`${label} identifier "${identifier}" is not a numeric ID or a #reference.`);
   }
-  try {
-    return await get<TaigaWorkItem>(`${path}/${raw}`);
-  } catch (error) {
-    const apiErr = error as ApiError;
-    if (apiErr.status === 404 && projectIdentifier) {
-      const project = await resolveProjectId(projectIdentifier);
-      return get<TaigaWorkItem>(`${path}/by_ref`, { ref: raw, project });
-    }
-    throw error;
-  }
+  return get<TaigaWorkItem>(`${path}/${raw}`);
 }
 
 const TAXONOMY = {
@@ -146,7 +137,7 @@ export async function projectUserNames(projectId: number): Promise<Map<number, s
 export async function resolveMemberId(projectId: number, assignee: string | number): Promise<number> {
   const wanted = String(assignee).trim();
   if (isNumericId(wanted)) return Number(wanted);
-  if (wanted.toLowerCase() === 'me') return (await getMetadata<TaigaUser>(API_ENDPOINTS.USERS_ME)).id;
+  if (wanted.toLowerCase() === 'me') return currentUserId();
 
   const users = await listProjectUsers(projectId);
   const needle = wanted.toLowerCase();
@@ -157,6 +148,32 @@ export async function resolveMemberId(projectId: number, assignee: string | numb
     throw new Error(`No member of this project matches "${assignee}". Available usernames: ${known}`);
   }
   return match.id;
+}
+
+export async function currentUserId(): Promise<number> {
+  return (await getMetadata<TaigaUser>(API_ENDPOINTS.USERS_ME)).id;
+}
+
+export interface OwnedRecord {
+  owner?: number | null;
+  assigned_to?: number | null;
+  assigned_users?: number[];
+}
+
+export async function assertWritable(
+  record: OwnedRecord,
+  label: string,
+  access: 'update' | 'delete',
+): Promise<void> {
+  const owner = record.owner;
+  if (owner === undefined || owner === null) {
+    throw new Error(`Refusing to ${access} ${label}: Taiga did not report an owner, so ownership cannot be verified.`);
+  }
+  const me = await currentUserId();
+  if (owner === me) return;
+  if (access === 'update' && (record.assigned_to === me || record.assigned_users?.includes(me) === true)) return;
+  const rule = access === 'delete' ? 'only the creator can delete one' : 'only the creator or the assignee can update one';
+  throw new Error(`Refusing to ${access} ${label}: it belongs to another user; ${rule}.`);
 }
 
 export async function patchItem<T>(
@@ -208,6 +225,31 @@ export async function resolveSprintId(
     throw new Error(`No sprint named "${raw}" in this project. Available: ${available || 'none'}`);
   }
   return match.id;
+}
+
+export async function currentSprintId(projectId: number): Promise<number | null> {
+  const sprints = await get<TaigaMilestone[]>(API_ENDPOINTS.MILESTONES, { project: projectId });
+  const open = sprints.filter((s) => s.closed !== true);
+  if (open.length === 0) return null;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const start = (s: TaigaMilestone): string => s.estimated_start ?? '';
+  const latestFirst = [...open].sort((a, b) => start(b).localeCompare(start(a)));
+  const covering = latestFirst.find((s) => start(s) !== ''
+    && start(s).slice(0, 10) <= today
+    && today <= (s.estimated_finish ?? '9999-12-31').slice(0, 10));
+  return (covering ?? latestFirst[0])?.id ?? null;
+}
+
+export function assertSameProject(
+  record: { project?: number | null },
+  expected: number | null | undefined,
+  label: string,
+): void {
+  const project = record.project;
+  if (project === undefined || project === null || project !== expected) {
+    throw new Error(`Refusing to use ${label}: Taiga did not report which project it is in, or it is in a different project from the item being changed.`);
+  }
 }
 
 export async function resolvePointsPayload(projectId: number, points: string | number): Promise<Record<string, number>> {

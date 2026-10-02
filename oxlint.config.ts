@@ -24,6 +24,7 @@ export default defineConfig({
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-comments": "error",
     "anti-slop/no-module-mocking": "error",
     "anti-slop/no-object-parameters": "error",
     "anti-slop/no-reflect-apply": "error",
@@ -36,10 +37,4 @@ export default defineConfig({
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
   },
-  overrides: [
-    {
-      files: ["test/**/*.js"],
-      rules: { "anti-slop/no-runtime-typeof": "off" },
-    },
-  ],
 });

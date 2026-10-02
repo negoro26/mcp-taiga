@@ -3,14 +3,11 @@
 import assert from 'node:assert/strict';
 import { z } from 'zod';
 import { allTools } from '../src/tools/index.js';
-import { ITEM_TYPES, findIdByName, isNumericId, itemType, patchItem } from '../src/taiga.js';
+import { ITEM_TYPES, currentSprintId, findIdByName, isNumericId, itemType, patchItem } from '../src/taiga.js';
 import {
   calculateCompletionPercentage,
   createErrorResponse,
   createSuccessResponse,
-  formatDate,
-  getSafeValue,
-  getStatusLabel,
   guard,
 } from '../src/utils.js';
 import { assignees, listing, pointsSum, sprintLine, userName, workLine } from '../src/format.js';
@@ -32,6 +29,8 @@ interface MockRequest {
 }
 
 const mockRequests: MockRequest[] = [];
+let mockMilestones: JsonValue = [];
+
 globalThis.fetch = async (input: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
   const url = input instanceof Request ? input.url : input instanceof URL ? input.toString() : input;
   const method = (init.method ?? 'GET').toUpperCase();
@@ -57,6 +56,8 @@ globalThis.fetch = async (input: string | URL | Request, init: RequestInit = {})
     } else {
       data = { id: 101, subject: 'Issue 101', version: 10 };
     }
+  } else if (url.includes('/milestones')) {
+    data = mockMilestones;
   }
   return new Response(JSON.stringify(data), {
     status: 200,
@@ -332,22 +333,10 @@ test('apiBaseUrl warns once for non-loopback http URLs and does not warn for htt
   }
 });
 
-test('formatDate handles missing and real dates', () => {
-  assert.equal(formatDate(null), 'Not set');
-  assert.equal(formatDate('2026-03-04T10:00:00Z'), '2026-03-04');
-});
-
 test('calculateCompletionPercentage guards divide-by-zero', () => {
   assert.equal(calculateCompletionPercentage(0, 0), 0);
   assert.equal(calculateCompletionPercentage(1, 3), 33);
   assert.equal(calculateCompletionPercentage(3, 3), 100);
-});
-
-test('status and default helpers', () => {
-  assert.equal(getStatusLabel(true), 'Closed');
-  assert.equal(getStatusLabel(false), 'Active');
-  assert.equal(getSafeValue(null, 'fallback'), 'fallback');
-  assert.equal(getSafeValue('value', 'fallback'), 'value');
 });
 
 test('findIdByName is case-insensitive and misses safely', () => {
@@ -464,6 +453,40 @@ test('getMetadata caches per path and params and serves hits without extra reque
   assert.equal(mockRequests.length, beforeCount + 2, 'different slug must miss cache and issue a second request');
   await getMetadata<{ ok: boolean }>('/meta-test', { slug: 'slug-b' });
   assert.equal(mockRequests.length, beforeCount + 2, 'second slug must hit cache');
+});
+
+test('currentSprintId picks the open sprint covering today, ignores closed sprints, and falls back to the latest start', async () => {
+  const day = (offset: number): string => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  };
+
+  mockMilestones = [
+    { id: 1, name: 'Closed Past', estimated_start: day(-40), estimated_finish: day(-30), closed: true },
+    { id: 2, name: 'Covering', estimated_start: day(-3), estimated_finish: day(3), closed: false },
+    { id: 3, name: 'Later', estimated_start: day(10), estimated_finish: day(20), closed: false },
+  ] satisfies TaigaMilestone[];
+  const covering = await currentSprintId(1);
+  assert.equal(covering, 2, 'the open sprint whose window covers today must win over later sprints');
+
+  mockMilestones = [
+    { id: 4, name: 'Earlier Open', estimated_start: day(-40), estimated_finish: day(-30), closed: false },
+    { id: 5, name: 'Latest Open', estimated_start: day(10), estimated_finish: day(20), closed: false },
+    { id: 6, name: 'Closed Latest', estimated_start: day(30), estimated_finish: day(40), closed: true },
+  ] satisfies TaigaMilestone[];
+  const fallback = await currentSprintId(1);
+  assert.equal(fallback, 5, 'with no covering sprint, the latest-started OPEN sprint must win, skipping closed ones');
+
+  mockMilestones = [
+    { id: 7, name: 'Closed Only', estimated_start: day(-10), estimated_finish: day(10), closed: true },
+  ] satisfies TaigaMilestone[];
+  const noneOpen = await currentSprintId(1);
+  assert.equal(noneOpen, null, 'a project with no open sprint must yield null so create sends no milestone');
+
+  mockMilestones = [];
+  const empty = await currentSprintId(1);
+  assert.equal(empty, null, 'a project with no sprints at all must yield null');
 });
 
 let failed = 0;

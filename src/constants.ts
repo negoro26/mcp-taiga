@@ -38,36 +38,14 @@ export const ERROR_MESSAGES = {
 };
 
 export const SUCCESS_MESSAGES = {
-  AUTHENTICATED: 'Successfully authenticated',
-  USER_STORY_CREATED: 'User story created',
-  TASK_CREATED: 'Task created',
-  ISSUE_CREATED: 'Issue created',
-  SPRINT_CREATED: 'Sprint created',
   COMMENT_ADDED: 'Comment added',
   COMMENT_EDITED: 'Comment edited',
   COMMENT_DELETED: 'Comment deleted',
-  ATTACHMENT_UPLOADED: 'Attachment uploaded',
-  ATTACHMENT_DELETED: 'Attachment deleted',
-  EPIC_CREATED: 'Epic created',
-  EPIC_UPDATED: 'Epic updated',
-  STORY_LINKED_TO_EPIC: 'User story linked to epic',
-  STORY_UNLINKED_FROM_EPIC: 'User story unlinked from epic',
-  WIKI_PAGE_CREATED: 'Wiki page created',
-  WIKI_PAGE_UPDATED: 'Wiki page updated',
-  WIKI_PAGE_DELETED: 'Wiki page deleted',
 };
 
 export const MAX_BATCH_SIZE = 20;
 
+export const MAX_LIST_ROWS = 50;
+
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
-export const STATUS_LABELS = {
-  ACTIVE: 'Active',
-  CLOSED: 'Closed',
-  UNKNOWN: 'Unknown',
-  NOT_SET: 'Not set',
-  UNASSIGNED: 'Unassigned',
-  NO_SPRINT: 'No Sprint',
-  NO_DESCRIPTION: 'No description provided',
-  NO_TAGS: 'No tags',
-};
