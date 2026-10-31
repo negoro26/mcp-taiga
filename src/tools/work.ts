@@ -38,24 +38,24 @@ type WorkType = 'issue' | 'story' | 'task' | 'epic';
 const TYPES = {
   issue: {
     key: 'issue', plural: 'issues', statusKind: 'issue_status',
-    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'priority', 'severity', 'issueType'],
+    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'priority', 'severity', 'issueType', 'blocked', 'blockedNote', 'dueDate'],
   },
   story: {
     key: 'user_story', plural: 'user stories', statusKind: 'user_story_status',
-    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'points'],
+    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'points', 'blocked', 'blockedNote', 'dueDate'],
   },
   task: {
     key: 'task', plural: 'tasks', statusKind: 'task_status',
-    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'parent'],
+    fields: ['subject', 'description', 'status', 'assignee', 'sprint', 'tags', 'parent', 'points', 'priority', 'blocked', 'blockedNote', 'dueDate'],
   },
   epic: {
     key: 'epic', plural: 'epics', statusKind: 'epic_status',
-    fields: ['subject', 'description', 'status', 'assignee', 'tags', 'color'],
+    fields: ['subject', 'description', 'status', 'assignee', 'tags', 'color', 'blocked', 'blockedNote'],
   },
 } satisfies Record<WorkType, { key: ItemTypeKey; plural: string; statusKind: TaxonomyKind; fields: string[] }>;
 
 interface FilterOptions {
-  assignee?: string;
+  assignee?: string | string[];
   watcher?: string;
   sprint?: number | string;
   status?: string;
@@ -70,11 +70,16 @@ async function buildFilters(type: WorkType, projectId: number, filters: FilterOp
   const params: QueryParams = { project: projectId };
 
   if (filters.assignee !== undefined) {
-    const memberId = await resolveMemberId(projectId, filters.assignee);
-    if (type === 'story') {
-      params.assigned_users = memberId;
-    } else {
-      params.assigned_to = memberId;
+    const target = Array.isArray(filters.assignee) ? filters.assignee[0] : filters.assignee;
+
+    if (target !== undefined) {
+      const memberId = await resolveMemberId(projectId, target);
+
+      if (type === 'story') {
+        params.assigned_users = memberId;
+      } else {
+        params.assigned_to = memberId;
+      }
     }
   }
 
@@ -103,6 +108,7 @@ async function buildFilters(type: WorkType, projectId: number, filters: FilterOp
   }
 
   if (filters.q) params.q = filters.q;
+
   if (filters.orderBy) params.order_by = filters.orderBy;
 
   if (filters.parent !== undefined) {
@@ -129,7 +135,7 @@ interface WorkItemInputFields {
   subject?: string;
   description?: string;
   status?: string;
-  assignee?: string;
+  assignee?: string | string[];
   sprint?: number | string;
   tags?: string[];
   priority?: string;
@@ -138,6 +144,9 @@ interface WorkItemInputFields {
   points?: number | string;
   color?: string;
   parent?: number | string | null;
+  blocked?: boolean;
+  blockedNote?: string;
+  dueDate?: string;
   [key: string]: JsonValue | undefined;
 }
 
@@ -156,41 +165,53 @@ async function buildPayload(
   defaultSprint: number | null | undefined = undefined,
 ): Promise<JsonBody> {
   const allowed = TYPES[type].fields;
+
   for (const key of Object.keys(fields)) {
     if (fields[key] === undefined || allowed.includes(key)) continue;
+
     if (key === 'parent' && type === 'story') {
       throw new Error('A story\'s epic cannot be set with update. Use op "link" or "unlink" with parent set to the epic.');
     }
+
     throw new Error(`Field "${key}" is not supported for ${type}.`);
   }
 
   const payload: JsonBody = {};
+
   if (fields.subject !== undefined) payload.subject = fields.subject;
+
   if (fields.description !== undefined) payload.description = fields.description;
+
   if (fields.tags !== undefined) payload.tags = fields.tags;
-  if (fields.points !== undefined) {
+
+  if (fields.points !== undefined && type === 'story') {
     payload.points = await resolvePointsPayload(projectId, fields.points);
   }
+
   if (fields.color !== undefined) payload.color = fields.color;
 
   if (fields.status !== undefined) {
     if (taxonomyCache?.statuses) {
       const id = findIdByName(taxonomyCache.statuses, fields.status);
+
       if (id === undefined) {
         throw new Error(`No status named "${fields.status}" in this project. Available: ${taxonomyCache.statuses.map((s) => s.name).join(', ')}`);
       }
+
       payload.status = id;
     } else {
       payload.status = await resolveTaxonomyId(TYPES[type].statusKind, projectId, fields.status);
     }
   }
 
-  if (fields.priority !== undefined) {
+  if (fields.priority !== undefined && type === 'issue') {
     if (taxonomyCache?.priorities) {
       const id = findIdByName(taxonomyCache.priorities, fields.priority);
+
       if (id === undefined) {
         throw new Error(`No priority named "${fields.priority}" in this project. Available: ${taxonomyCache.priorities.map((p) => p.name).join(', ')}`);
       }
+
       payload.priority = id;
     } else {
       payload.priority = await resolveTaxonomyId('priority', projectId, fields.priority);
@@ -200,9 +221,11 @@ async function buildPayload(
   if (fields.severity !== undefined) {
     if (taxonomyCache?.severities) {
       const id = findIdByName(taxonomyCache.severities, fields.severity);
+
       if (id === undefined) {
         throw new Error(`No severity named "${fields.severity}" in this project. Available: ${taxonomyCache.severities.map((s) => s.name).join(', ')}`);
       }
+
       payload.severity = id;
     } else {
       payload.severity = await resolveTaxonomyId('severity', projectId, fields.severity);
@@ -212,9 +235,11 @@ async function buildPayload(
   if (fields.issueType !== undefined) {
     if (taxonomyCache?.types) {
       const id = findIdByName(taxonomyCache.types, fields.issueType);
+
       if (id === undefined) {
         throw new Error(`No issue type named "${fields.issueType}" in this project. Available: ${taxonomyCache.types.map((t) => t.name).join(', ')}`);
       }
+
       payload.type = id;
     } else {
       payload.type = await resolveTaxonomyId('issue_type', projectId, fields.issueType);
@@ -222,7 +247,39 @@ async function buildPayload(
   }
 
   if (fields.assignee !== undefined) {
-    payload.assigned_to = await resolveMemberId(projectId, fields.assignee);
+    if (Array.isArray(fields.assignee)) {
+      if (type !== 'story' && fields.assignee.length > 1) {
+        throw new Error(`Multiple assignees are only supported on user stories (got ${fields.assignee.length} for ${type}).`);
+      }
+
+      const ids: number[] = [];
+
+      for (const entry of fields.assignee) {
+        ids.push(await resolveMemberId(projectId, entry));
+      }
+
+      payload.assigned_to = ids[0] ?? null;
+
+      if (type === 'story') {
+        payload.assigned_users = ids;
+      }
+    } else {
+      const id = await resolveMemberId(projectId, fields.assignee);
+      payload.assigned_to = id;
+
+      if (type === 'story') {
+        payload.assigned_users = [id];
+      }
+    }
+  }
+
+  if (fields.blocked !== undefined) payload.is_blocked = fields.blocked;
+
+  if (fields.blockedNote !== undefined) payload.blocked_note = fields.blockedNote;
+
+  if (fields.dueDate !== undefined) {
+    const rawDue = fields.dueDate.trim().toLowerCase();
+    payload.due_date = rawDue === 'none' || rawDue === 'null' || rawDue === '' ? null : fields.dueDate;
   }
 
   if (fields.sprint !== undefined) {
@@ -233,13 +290,17 @@ async function buildPayload(
 
   if (type === 'task') {
     const parentIdent = fields.parent ?? defaultParent;
+
     if (parentIdent !== undefined && parentIdent !== null) {
       const cacheKey = String(parentIdent);
       let story = storyCache?.get(cacheKey);
+
       if (!story) {
         story = await resolveItem('user_story', parentIdent, projectId);
+
         if (storyCache) storyCache.set(cacheKey, story);
       }
+
       assertSameProject(story, projectId, `user story #${story.ref ?? story.id}`);
       payload.user_story = story.id;
     }
@@ -250,9 +311,11 @@ async function buildPayload(
 
 function renderDetail(item: TaigaWorkItem, namesById?: Map<number, string>): string {
   let desc = item.description;
+
   if (desc && desc.length > 2000) {
     desc = `${desc.slice(0, 2000)}…(truncated)`;
   }
+
   const tagStr = Array.isArray(item.tags)
     ? item.tags.map((t) => (Array.isArray(t) ? t[0] : t)).join(', ')
     : item.tags;
@@ -271,6 +334,8 @@ function renderDetail(item: TaigaWorkItem, namesById?: Map<number, string>): str
     ['parent story', item.user_story_extra_info ? `#${item.user_story_extra_info.ref} ${item.user_story_extra_info.subject}` : null],
     ['epic', item.epics?.[0] ? `#${item.epics[0].ref} ${item.epics[0].subject}` : (item.epic_extra_info ? `#${item.epic_extra_info.ref} ${item.epic_extra_info.subject}` : null)],
     ['tags', tagStr || null],
+    ['blocked', item.is_blocked ? (item.blocked_note || 'yes') : null],
+    ['due date', item.due_date ? day(item.due_date) : null],
     ['watchers', item.total_watchers ?? (item.watchers?.length ? item.watchers.length : null)],
     ['created', day(item.created_date)],
     ['modified', day(item.modified_date)],
@@ -286,17 +351,20 @@ const inputSchema = z.object({
   subject: z.string().optional().describe('Item subject or title'),
   description: z.string().optional().describe('Item description markdown'),
   status: z.string().optional().describe('Status name'),
-  assignee: z.string().optional().describe('Assignee username, email, full name, ID, or "me"'),
+  assignee: z.union([z.string(), z.array(z.string())]).optional().describe('Assignee username, email, full name, ID, "me", or array for stories'),
   sprint: z.union([z.number().int(), z.string()]).optional().describe('Sprint ID or name ("none" to clear)'),
   tags: z.array(z.string()).optional().describe('Tags array'),
-  priority: z.string().optional().describe('Priority name (issues only)'),
+  priority: z.string().optional().describe('Priority name (issues and tasks)'),
   severity: z.string().optional().describe('Severity name (issues only)'),
   issueType: z.string().optional().describe('Issue type name (issues only)'),
   points: z
     .union([z.number(), z.string()])
     .optional()
-    .describe('Points from the project deck: 1, 3, 5, or "?" for unestimated (stories only)'),
+    .describe('Points from the project deck: 1, 2, 3, 5, 8, 13, 21, or "?" for unestimated (stories and tasks)'),
   parent: z.union([z.number().int(), z.string()]).optional().describe('Parent story (tasks) or epic (link/unlink)'),
+  blocked: z.boolean().optional().describe('Mark item as blocked or unblocked'),
+  blockedNote: z.string().optional().describe('Reason the item is blocked'),
+  dueDate: z.string().optional().describe('Due date YYYY-MM-DD ("none" to clear)'),
   items: z
     .array(z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())])))
     .max(MAX_BATCH_SIZE)
@@ -349,6 +417,9 @@ const handler = async ({
   q,
   orderBy,
   limit,
+  blocked,
+  blockedNote,
+  dueDate,
 }: Args): Promise<CallToolResult> => {
   const { key: internalKey, plural } = TYPES[type];
   const meta = ITEM_TYPES[internalKey];
@@ -361,6 +432,7 @@ const handler = async ({
     const rows = all.slice(0, limit ?? MAX_LIST_ROWS);
     const hasMulti = rows.some((r) => Array.isArray(r.assigned_users) && r.assigned_users.length > 1);
     const namesById = hasMulti ? await projectUserNames(projectId) : undefined;
+
     return createSuccessResponse(
       listing(`${plural} in ${project}`, rows.map((r) => workLine(r, namesById)), all.length),
     );
@@ -370,20 +442,25 @@ const handler = async ({
     if (!item) throw new Error('Item identifier is required for get operation.');
     const record = await resolveItem(internalKey, item, project);
     let namesById: Map<number, string> | undefined;
+
     if (Array.isArray(record.assigned_users) && record.assigned_users.length > 1 && record.project) {
       namesById = await projectUserNames(record.project);
     }
+
     return createSuccessResponse(renderDetail(record, namesById));
   }
 
   if (op === 'create') {
     if (items) {
       if (!items.length) throw new Error(ERROR_MESSAGES.EMPTY_BATCH);
+
       if (items.length > MAX_BATCH_SIZE) throw new Error(`${ERROR_MESSAGES.BATCH_TOO_LARGE} ${MAX_BATCH_SIZE}`);
+
       if (!project) throw new Error(ERROR_MESSAGES.MISSING_PROJECT_ID);
       const projectId = await resolveProjectId(project);
 
       const taxPromises: Promise<TaigaTaxonomyItem[]>[] = [];
+
       if (type === 'issue') {
         taxPromises.push(
           listTaxonomy('issue_type', projectId),
@@ -394,14 +471,18 @@ const handler = async ({
       } else if (type === 'story') {
         taxPromises.push(listTaxonomy('user_story_status', projectId));
       } else if (type === 'task') {
-        taxPromises.push(listTaxonomy('task_status', projectId));
+        taxPromises.push(listTaxonomy('task_status', projectId), listTaxonomy('priority', projectId));
       } else if (type === 'epic') {
         taxPromises.push(listTaxonomy('epic_status', projectId));
       }
+
       const taxResults = await Promise.all(taxPromises);
       const taxonomyCache: TaxonomyCache = {};
+
       if (type === 'issue') {
         [taxonomyCache.types, taxonomyCache.priorities, taxonomyCache.severities, taxonomyCache.statuses] = taxResults;
+      } else if (type === 'task') {
+        [taxonomyCache.statuses, taxonomyCache.priorities] = taxResults;
       } else {
         [taxonomyCache.statuses] = taxResults;
       }
@@ -411,16 +492,44 @@ const handler = async ({
       const failedList: BatchItemFailure[] = [];
 
       let batchSprint: number | null | undefined;
+
       if (type === 'story' || type === 'task') {
         batchSprint = sprint !== undefined ? await resolveSprintId(projectId, sprint) : await currentSprintId(projectId);
       }
+
       for (const it of items) {
         try {
           const payload = await buildPayload(type, projectId, it, taxonomyCache, storyCache, parent, batchSprint);
           payload.project = projectId;
+
           if (!payload.subject) throw new Error('Subject is required');
+
           if (type === 'task' && !payload.user_story) throw new Error('Parent user story is required');
+          let prioId: number | undefined;
+
+          if (type === 'task' && it.priority !== undefined && it.priority !== null) {
+            const prioName = String(it.priority);
+            prioId = taxonomyCache.priorities
+              ? findIdByName(taxonomyCache.priorities, prioName)
+              : await resolveTaxonomyId('priority', projectId, prioName);
+
+            if (prioId === undefined) {
+              throw new Error(`No priority named "${prioName}" in this project.`);
+            }
+          }
+
           const created = await post<TaigaWorkItem>(meta.path, payload);
+
+          if (type === 'task') {
+            if (it.points !== undefined) {
+              await post(API_ENDPOINTS.TASK_POINTS, { task: created.id, value: it.points });
+            }
+
+            if (prioId !== undefined) {
+              await post(API_ENDPOINTS.TASK_PRIORITY, { task: created.id, priority: prioId });
+            }
+          }
+
           createdList.push(created);
         } catch (err) {
           failedList.push({ item: it, error: err instanceof Error ? err.message : String(err) });
@@ -433,24 +542,31 @@ const handler = async ({
       }
 
       const lines = [`Batch created ${createdList.length} ${plural} (${failedList.length} failed):`];
+
       for (const c of createdList) {
         lines.push(workLine(c));
       }
+
       if (failedList.length > 0) {
         lines.push('Failed:');
+
         for (const f of failedList) {
           lines.push(`- ${f.item.subject || 'item'}: ${f.error}`);
         }
       }
+
       return createSuccessResponse(lines.join('\n'));
     }
 
     if (!project) throw new Error(ERROR_MESSAGES.MISSING_PROJECT_ID);
     const projectId = await resolveProjectId(project);
+
     if (!subject) throw new Error('Subject is required to create a work item.');
+
     if (type === 'task' && !parent) throw new Error('Parent user story is required to create a task.');
 
     let singleSprint: number | null | undefined;
+
     if (sprint === undefined && (type === 'story' || type === 'task')) {
       singleSprint = await currentSprintId(projectId);
     }
@@ -467,10 +583,31 @@ const handler = async ({
       issueType,
       points,
       parent,
+      blocked,
+      blockedNote,
+      dueDate,
     });
+
     payload.project = projectId;
+
     if (payload.milestone === undefined && singleSprint !== undefined) payload.milestone = singleSprint;
+
+    const prioId = type === 'task' && priority !== undefined
+      ? await resolveTaxonomyId('priority', projectId, priority)
+      : undefined;
+
     const created = await post<TaigaWorkItem>(meta.path, payload);
+
+    if (type === 'task') {
+      if (points !== undefined) {
+        await post(API_ENDPOINTS.TASK_POINTS, { task: created.id, value: points });
+      }
+
+      if (prioId !== undefined) {
+        await post(API_ENDPOINTS.TASK_PRIORITY, { task: created.id, priority: prioId });
+      }
+    }
+
     return createSuccessResponse(`Created ${meta.label.toLowerCase()}:\n${workLine(created)}`);
   }
 
@@ -479,7 +616,9 @@ const handler = async ({
     const existing = await resolveItem(internalKey, item, project);
     await assertWritable(existing, `${meta.label.toLowerCase()} #${existing.ref ?? existing.id}`, 'update');
     const projectId = existing.project;
+
     if (projectId === undefined) throw new Error('Work item has no project ID.');
+
     const payload = await buildPayload(type, projectId, {
       subject,
       description,
@@ -492,44 +631,77 @@ const handler = async ({
       issueType,
       points,
       parent,
+      blocked,
+      blockedNote,
+      dueDate,
     });
-    if (Object.keys(payload).length === 0) throw new Error('No fields provided to update.');
-    const updated = await patchItem<TaigaWorkItem>(internalKey, existing, payload);
+
+    const hasTaskAddonWrite = type === 'task' && (points !== undefined || priority !== undefined);
+
+    if (Object.keys(payload).length === 0 && !hasTaskAddonWrite) throw new Error('No fields provided to update.');
+
+    const prioId = type === 'task' && priority !== undefined
+      ? await resolveTaxonomyId('priority', projectId, priority)
+      : undefined;
+
+    const updated = Object.keys(payload).length > 0
+      ? await patchItem<TaigaWorkItem>(internalKey, existing, payload)
+      : existing;
+
+    if (type === 'task') {
+      if (points !== undefined) {
+        await post(API_ENDPOINTS.TASK_POINTS, { task: existing.id, value: points });
+      }
+
+      if (prioId !== undefined) {
+        await post(API_ENDPOINTS.TASK_PRIORITY, { task: existing.id, priority: prioId });
+      }
+    }
+
     return createSuccessResponse(`Updated ${meta.label.toLowerCase()}:\n${workLine(updated)}`);
   }
 
   if (op === 'link') {
     if (type !== 'story') throw new Error('Link operation requires type: "story" (linking story to an epic).');
+
     if (!item) throw new Error('Item (user story) is required for link operation.');
+
     if (!parent) throw new Error('Parent (epic) is required for link operation.');
     const story = await resolveItem('user_story', item, project);
     await assertWritable(story, `user story #${story.ref ?? story.id}`, 'update');
     const epic = await resolveItem('epic', parent, project || story.project);
     assertSameProject(epic, story.project, `epic #${epic.ref ?? epic.id}`);
     await post<TaigaWorkItem>(`${API_ENDPOINTS.EPICS}/${epic.id}/related_userstories`, { epic: epic.id, user_story: story.id });
+
     return createSuccessResponse(`Linked user story #${story.ref} "${story.subject}" to epic #${epic.ref} "${epic.subject}"`);
   }
 
   if (op === 'unlink') {
     if (type !== 'story') throw new Error('Unlink operation requires type: "story" (unlinking story from an epic).');
+
     if (!item) throw new Error('Item (user story) is required for unlink operation.');
+
     if (!parent) throw new Error('Parent (epic) is required for unlink operation.');
     const story = await resolveItem('user_story', item, project);
     await assertWritable(story, `user story #${story.ref ?? story.id}`, 'update');
     const epic = await resolveItem('epic', parent, project || story.project);
     assertSameProject(epic, story.project, `epic #${epic.ref ?? epic.id}`);
     await del<void>(`${API_ENDPOINTS.EPICS}/${epic.id}/related_userstories/${story.id}`);
+
     return createSuccessResponse(`Unlinked user story #${story.ref} "${story.subject}" from epic #${epic.ref} "${epic.subject}"`);
   }
 
   if (op === 'delete') {
     if (!item) throw new Error('Item numeric ID or #ref is required for delete operation.');
+
     if (items) {
       throw new Error('Delete takes exactly one item. Batch is create-only, so a single mistaken call cannot clear a board.');
     }
+
     const doomed = await resolveItem(internalKey, item, project);
     await assertWritable(doomed, `${meta.label.toLowerCase()} #${doomed.ref ?? doomed.id}`, 'delete');
     await del<void>(`${meta.path}/${doomed.id}`);
+
     return createSuccessResponse(
       `Deleted ${meta.label.toLowerCase()} #${doomed.ref} "${doomed.subject}" (id=${doomed.id}). This is permanent.`,
     );

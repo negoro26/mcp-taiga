@@ -28,6 +28,7 @@ const handler = async ({ op, project }: Args): Promise<CallToolResult> => {
   if (op === 'list') {
     const me = await get<TaigaUser>(API_ENDPOINTS.USERS_ME);
     const projects = await get<TaigaProject[]>(API_ENDPOINTS.PROJECTS, { member: me.id });
+
     return createSuccessResponse(listing('projects', projects.map(projectLine)));
   }
 
@@ -35,7 +36,9 @@ const handler = async ({ op, project }: Args): Promise<CallToolResult> => {
     if (!project) {
       throw new Error('Project ID or slug is required for op "get".');
     }
+
     const p = await resolveProject(project);
+
     const modules = [
       p.is_epics_activated && 'epics',
       p.is_backlog_activated && 'backlog',
@@ -63,9 +66,11 @@ const handler = async ({ op, project }: Args): Promise<CallToolResult> => {
 
   if (op === 'whoami') {
     const me = await get<TaigaUser>(API_ENDPOINTS.USERS_ME);
+
     const text = [me.id, me.username, me.full_name_display || me.full_name, me.email]
       .filter(Boolean)
       .join(' ');
+
     return createSuccessResponse(text);
   }
 

@@ -29,6 +29,10 @@ export const API_ENDPOINTS = {
   ISSUE_TYPES: '/issue-types',
   POINTS: '/points',
   ROLES: '/roles',
+  TASK_POINTS: '/task-points',
+  TASK_PRIORITY: '/task-priority',
+  SPRINT_REVIEW: '/sprint-review',
+  SPRINT_CLOSE: '/sprint-close',
 };
 
 export const ERROR_MESSAGES = {

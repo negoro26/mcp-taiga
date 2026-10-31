@@ -9,13 +9,16 @@ import { readFile } from 'node:fs/promises';
 import { isNumericId } from '../src/taiga.js';
 
 const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'index.js');
+
 const client = new Client(
   { name: 'protocol-test', version: '1.0.0' },
   { versionNegotiation: { mode: 'auto' } },
 );
+
 const transport = new StdioClientTransport({ command: process.execPath, args: [serverPath], stderr: 'pipe' });
 
 let failed = 0;
+
 const check = (name: string, fn: () => void): void => {
   try {
     fn();
@@ -28,6 +31,7 @@ const check = (name: string, fn: () => void): void => {
 };
 
 await client.connect(transport);
+
 check('server negotiates the 2026-07-28 protocol era', () => {
   assert.equal(client.getProtocolEra(), 'modern');
   assert.equal(client.getNegotiatedProtocolVersion(), '2026-07-28');
@@ -37,12 +41,14 @@ const manifestPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..
 const manifest: { name: string; version: string } = JSON.parse(await readFile(manifestPath, 'utf8'));
 
 const version = client.getServerVersion();
+
 check('server advertises the same name and version as package.json', () => {
   assert.ok(version, 'no server version returned');
   assert.equal(version.name, manifest.name, 'handshake name must match package.json name');
   assert.equal(version.version, manifest.version, 'handshake version must match package.json version');
   const parts = version.version.split('.');
   assert.equal(parts.length, 3, `version must have 3 parts, got ${version.version}`);
+
   for (const part of parts) {
     assert.ok(isNumericId(part), `version part "${part}" must be numeric digits`);
   }
@@ -55,6 +61,7 @@ check('server declares tool and resource capabilities', () => {
 });
 
 const { tools } = await client.listTools();
+
 check('tools/list returns exactly 6 tools', () => {
   assert.equal(tools.length, 6, `expected exactly 6 tools, got ${tools.length}`);
 });
@@ -69,6 +76,7 @@ check('every tool exposes a JSON Schema with required op and all properties desc
     const opProp = properties?.op;
     assert.ok(opProp, `${tool.name} missing 'op' property`);
     assert.ok(Array.isArray(opProp.enum) && opProp.enum.length > 0, `${tool.name} 'op' enum must be non-empty`);
+
     for (const [field, schema] of Object.entries(properties ?? {})) {
       assert.ok(schema.description, `${tool.name}.${field} lost its description in JSON Schema conversion`);
     }
@@ -87,10 +95,12 @@ check('projects tool is annotated readOnlyHint, mutating tools are not', () => {
   assert.equal(projects.annotations?.readOnlyHint, true, 'projects tool must have readOnlyHint: true');
 
   const others = tools.filter((t) => t.name !== 'projects');
+
   for (const tool of others) {
     assert.equal(tool.annotations?.readOnlyHint, false, `${tool.name} must have readOnlyHint: false`);
   }
 });
+
 check('mutating tools advertise idempotentHint: false', () => {
   for (const tool of tools.filter((candidate) => candidate.name !== 'projects')) {
     assert.equal(tool.annotations?.idempotentHint, false, `${tool.name} must have idempotentHint: false`);
@@ -113,6 +123,7 @@ check('tools/list payload serialisation budget is under 12000 characters', () =>
 });
 
 const { resources } = await client.listResources();
+
 check('projects resource is registered', () => {
   assert.deepEqual(resources.map((r) => r.uri), ['taiga://projects']);
 });
@@ -123,6 +134,7 @@ const rejected = await client.callTool(
     arguments: { op: 'upload', type: 'issue', item: '1' },
   }
 );
+
 check('a handler throw is reported in-band, not as a protocol error', () => {
   assert.equal(rejected.isError, true);
   const blocks = 'content' in rejected && Array.isArray(rejected.content) ? rejected.content : [];
@@ -135,5 +147,42 @@ check('a handler throw is reported in-band, not as a protocol error', () => {
 });
 
 await client.close();
+
+const filteredClient = new Client(
+  { name: 'protocol-filtered-test', version: '1.0.0' },
+  { versionNegotiation: { mode: 'auto' } },
+);
+
+const filteredTransport = new StdioClientTransport({
+  command: process.execPath,
+  args: [serverPath],
+  env: { ...process.env, TAIGA_TOOLS: 'projects,work', TAIGA_READONLY: '1', TAIGA_API_URL: 'https://127.0.0.1:1/api/v1' },
+  stderr: 'pipe',
+});
+
+await filteredClient.connect(filteredTransport);
+
+const { tools: filteredTools } = await filteredClient.listTools();
+
+check('TAIGA_TOOLS filters advertised tools to reduce context exposure', () => {
+  assert.deepEqual(filteredTools.map((t) => t.name), ['projects', 'work']);
+});
+
+const readOnlyRejected = await filteredClient.callTool({
+  name: 'work',
+  arguments: { op: 'create', type: 'issue', project: '1', subject: 'Blocked by readonly' },
+});
+
+check('TAIGA_READONLY blocks non-GET requests before network transport', () => {
+  assert.equal(readOnlyRejected.isError, true);
+  const blocks = 'content' in readOnlyRejected && Array.isArray(readOnlyRejected.content) ? readOnlyRejected.content : [];
+  const [first] = blocks;
+  const text = first?.type === 'text' ? first.text : '';
+  assert.ok(text.includes('TAIGA_READONLY is enabled'), `expected TAIGA_READONLY error, got "${text}"`);
+});
+
+await filteredClient.close();
+
 console.error(`\n${failed ? `${failed} protocol checks FAILED` : 'all protocol checks passed'}`);
+
 process.exit(failed ? 1 : 0);

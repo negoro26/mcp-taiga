@@ -7,10 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get, isConfigured } from './api.js';
 import { API_ENDPOINTS, RESOURCE_URIS, SERVER_INFO } from './constants.js';
-import { allTools, registerAllTools } from './tools/index.js';
+import { enabledTools, registerAllTools } from './tools/index.js';
 import type { TaigaProject, TaigaUser } from './types.js';
 
 const envPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.env');
+
 if (existsSync(envPath)) process.loadEnvFile(envPath);
 
 function createServer(): McpServer {
@@ -30,6 +31,7 @@ function createServer(): McpServer {
     },
     async (uri: URL) => {
       const projects = await get<TaigaProject[]>(API_ENDPOINTS.PROJECTS, { member: (await get<TaigaUser>(API_ENDPOINTS.USERS_ME)).id });
+
       return {
         contents: [{
           uri: uri.href,
@@ -45,9 +47,12 @@ function createServer(): McpServer {
   );
 
   registerAllTools(server);
+
   return server;
 }
 
-const count = allTools.length;
+const count = enabledTools().length;
+
 console.error(`${SERVER_INFO.name} ${SERVER_INFO.version}: ${count} tools${isConfigured() ? '' : ' (TAIGA_USERNAME/TAIGA_PASSWORD not set)'}`);
+
 serveStdio(createServer);

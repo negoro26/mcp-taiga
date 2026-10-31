@@ -29,10 +29,6 @@ Tagging `v*` on `main` triggers the publish workflow, which re-runs type check, 
 
 [Conventional Commits](https://www.conventionalcommits.org/): `<type>: <description>` with types `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`. Example: `feat: add points validation`.
 
-## Before You Change Code
-
-Read [FEATURES.md](FEATURES.md). It maps every behaviour to the file and symbol that owns it. Comments are banned in source and enforced by the `anti-slop/no-comments` lint rule, so reasoning belongs in `FEATURES.md` rather than in the code. Any change that adds, removes, renames, or moves a behaviour must update `FEATURES.md` in the same commit.
-
 ## Development Setup
 
 Requirements: Node.js >= 24.
@@ -40,8 +36,7 @@ Requirements: Node.js >= 24.
 ```bash
 npm ci
 npm run build     # compile src/ and test/ into dist/
-npm test          # unit + protocol + contract suites (offline)
-npm run test:integration   # optional live smoke test; needs TAIGA_USERNAME/TAIGA_PASSWORD
+npm test          # protocol + contract suites (offline)
 ```
 
 Copy `.env.example` to `.env` for local runs — the server loads it automatically from a local checkout. See the README for architecture notes, the tool reference, and the reliability model before proposing changes.

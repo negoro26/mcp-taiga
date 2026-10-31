@@ -5,11 +5,11 @@ export const noCommentsRule = defineRule({
 		type: "problem",
 		docs: {
 			description:
-				"Disallow comments in source files; carry meaning in names and types, and record intent in FEATURES.md.",
+				"Disallow comments in source files; carry meaning in names and types.",
 		},
 		messages: {
 			noComment:
-				"Comments are banned. Rename so the code states the intent, and document the reasoning in FEATURES.md.",
+				"Comments are banned. Rename so the code states the intent.",
 		},
 	},
 	create(context) {

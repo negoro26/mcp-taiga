@@ -26,9 +26,11 @@ async function assertOwnComment(
 ): Promise<void> {
   const history = await get<TaigaHistoryEntry[]>(`/history/${historyKind}/${targetId}`, { type: 'comment' });
   const entry = (Array.isArray(history) ? history : []).find((e) => e.id === commentId);
+
   if (!entry) {
     throw new Error(`Comment ${commentId} was not found on this item.`);
   }
+
   await assertWritable({ owner: entry.user?.id ?? entry.user?.pk }, `comment ${commentId}`, access);
 }
 
@@ -42,15 +44,18 @@ const description = `Read and write comments on work items and wiki pages. Taiga
 | delete | type, item, commentId |
 
 edit and delete are refused unless you wrote the comment. add is open to any item you can see, since commenting on a colleague's work is the point; it does bump that item's version.`;
+
 const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 const handler = async ({ op, type, item, project, text, commentId, includeDeleted }: Args): Promise<CallToolResult> => {
       if (!type) {
         throw new Error(`Item type is required for op "${op}". Expected one of: issue, story, task, epic, wiki`);
       }
+
       if (item === undefined || item === null || item === '') {
         throw new Error(`Item identifier is required for op "${op}".`);
       }
+
       const normalizedType: ItemTypeKey = type === 'story' ? 'user_story' : type;
       const meta = itemType(normalizedType);
       let targetId: number;
@@ -68,14 +73,18 @@ const handler = async ({ op, type, item, project, text, commentId, includeDelete
         targetVersion = target.version;
         ref = target.ref ? `#${target.ref}` : `#${target.id}`;
       }
+
       switch (op) {
         case 'list': {
           const history = await get<TaigaHistoryEntry[]>(`/history/${meta.history}/${targetId}`, { type: 'comment' });
           const rawEntries = Array.isArray(history) ? history : [];
+
           const entries = includeDeleted
             ? rawEntries
             : rawEntries.filter((e) => !e.delete_comment_date);
+
           entries.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
           return createSuccessResponse(
             listing(`comments on ${meta.label} ${ref}`, entries.map(commentLine)),
           );
@@ -85,7 +94,9 @@ const handler = async ({ op, type, item, project, text, commentId, includeDelete
           if (!text) {
             throw new Error('Comment text is required for op "add".');
           }
+
           await patchItem<TaigaWorkItem | TaigaWikiPage>(normalizedType, { id: targetId, version: targetVersion }, { comment: text });
+
           return createSuccessResponse(`${SUCCESS_MESSAGES.COMMENT_ADDED} on ${meta.label} ${ref}.\n\n${text}`);
         }
 
@@ -93,11 +104,14 @@ const handler = async ({ op, type, item, project, text, commentId, includeDelete
           if (!commentId) {
             throw new Error('commentId (UUID) is required for op "edit".');
           }
+
           if (!text) {
             throw new Error('Comment text is required for op "edit".');
           }
+
           await assertOwnComment(meta.history, targetId, commentId, 'update');
           await post<TaigaHistoryEntry>(`/history/${meta.history}/${targetId}/edit_comment?id=${encodeURIComponent(commentId)}`, { comment: text });
+
           return createSuccessResponse(`${SUCCESS_MESSAGES.COMMENT_EDITED} on ${meta.label} ${ref} (comment: ${commentId}).\n\n${text}`);
         }
 
@@ -105,8 +119,10 @@ const handler = async ({ op, type, item, project, text, commentId, includeDelete
           if (!commentId) {
             throw new Error('commentId (UUID) is required for op "delete".');
           }
+
           await assertOwnComment(meta.history, targetId, commentId, 'delete');
           await post<TaigaHistoryEntry>(`/history/${meta.history}/${targetId}/delete_comment?id=${encodeURIComponent(commentId)}`);
+
           return createSuccessResponse(`${SUCCESS_MESSAGES.COMMENT_DELETED} on ${meta.label} ${ref} (comment: ${commentId}).`);
         }
 

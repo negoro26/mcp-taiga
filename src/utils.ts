@@ -6,6 +6,7 @@ export function createSuccessResponse(text: string): CallToolResult {
 
 export function createErrorResponse(error: Error | string): CallToolResult {
   const message = error instanceof Error ? error.message : String(error);
+
   return { content: [{ type: 'text', text: `❌ ${message}` }], isError: true };
 }
 
@@ -21,6 +22,7 @@ export function guard<A>(handler: (args: A) => Promise<CallToolResult>): (args: 
 
 export function calculateCompletionPercentage(completed: number, total: number): number {
   if (!total) return 0;
+
   return Math.round((completed / total) * 100);
 }
 

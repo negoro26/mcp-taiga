@@ -8,8 +8,6 @@
 
 A TypeScript MCP server for Taiga. It gives LLM clients six tools for projects, work items, sprints, comments, attachments, and wiki pages.
 
-New to the code? Start with [FEATURES.md](FEATURES.md), which maps every behaviour to the file and symbol that owns it.
-
 The server uses MCP revision `2026-07-28` and native `fetch`, and speaks stdio only.
 
 ## Requirements
@@ -95,13 +93,13 @@ Run `/mcp test taiga` or `/mcp list` to verify the server. OMP configuration liv
 
 ## Tools
 
-The server exposes six tools and 28 operation pairs.
+The server exposes six tools and 30 operation pairs. Set `TAIGA_TOOLS=projects,work,sprints` to expose only a subset of tools, or `TAIGA_READONLY=1` to refuse all non-GET mutations.
 
 | Tool | Operations | Key arguments |
 | --- | --- | --- |
 | `projects` | `list`, `get`, `whoami` | `project` accepts an ID or slug |
 | `work` | `list`, `get`, `create`, `update`, `link`, `unlink`, `delete` | `type`, `project`, `item`, `subject`, `items` |
-| `sprints` | `list`, `get`, `create`, `stats` | `project`, `sprint`, `name`, `start`, `finish` |
+| `sprints` | `list`, `get`, `create`, `stats`, `review`, `close_preview` | `project`, `sprint`, `name`, `start`, `finish` |
 | `comments` | `list`, `add`, `edit`, `delete` | `type`, `item`, `text`, `commentId` |
 | `attachments` | `list`, `upload`, `download`, `delete` | `type`, `item`, `attachmentId`, `filePath` or `fileContent`, `savePath` |
 | `wiki` | `list`, `get`, `create`, `update`, `delete`, `watch` | `project`, `page`, `content`, `watch` |
@@ -154,10 +152,9 @@ npm test
 | `npm run build` | Compile `src` and `test` into `dist` |
 | `npm run check` | Type-check without output |
 | `npm run lint` | Run the TypeScript anti-slop checks with oxlint |
-| `npm test` | Run unit, protocol, and contract tests |
-| `npm run test:integration` | Run the live Taiga smoke test when credentials exist |
+| `npm test` | Run protocol and contract tests |
 
-The test suite covers pure helpers, the MCP stdio handshake, and all tool operations against a mock Taiga server. Live Taiga reads are covered by the optional integration smoke test.
+The test suite covers the MCP stdio handshake and all tool operations against an in-process fake Taiga server.
 
 ## Project layout
 
@@ -176,13 +173,11 @@ src/tools/sprints.ts     sprints: list, get, stats, create
 src/tools/comments.ts    comments: list, add, edit, delete
 src/tools/attachments.ts attachments: list, upload, download, delete
 src/tools/wiki.ts        wiki pages: list, get, create, update, delete, watch
-test/unitTest.ts         pure helpers in isolation
 test/protocolTest.ts     the MCP handshake over stdio
 test/apiContractTest.ts  every tool op against an in-process fake Taiga
-test/integration.ts      live Taiga reads, only when credentials are set
 ```
 
-Comments are banned in source and enforced by the `anti-slop/no-comments` lint rule. Reasoning lives in [FEATURES.md](FEATURES.md) instead, which also maps each behaviour to the symbol that owns it. See [AGENTS.md](AGENTS.md) for the rules that apply to code changes.
+Comments are banned in source and enforced by the `anti-slop/no-comments` lint rule.
 
 ## Contributing
 

@@ -100,25 +100,33 @@ type MockPayload =
 
 function isDigitsOnly(value: string): boolean {
   const text = value.trim();
+
   if (text.length === 0) return false;
+
   for (const character of text) {
     if (character < '0' || character > '9') return false;
   }
+
   return true;
 }
 
 function isListHeader(line: string): boolean {
   if (!line) return false;
   const colonIndex = line.indexOf(': ');
+
   if (colonIndex <= 0) return false;
   const first = line[0] ?? '';
+
   if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z'))) return false;
   const after = line.slice(colonIndex + 2);
+
   if (isDigitsOnly(after)) return true;
   const parts = after.split(' of ');
+
   if (parts.length === 2 && isDigitsOnly(parts[0]) && isDigitsOnly(parts[1])) {
     return true;
   }
+
   return false;
 }
 
@@ -126,25 +134,31 @@ function isDigitRecord(line: string): boolean {
   const trimmed = line.trim();
   const spaceIdx = trimmed.indexOf(' ');
   const token = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+
   return isDigitsOnly(token);
 }
+
 function isWorkRecord(line: string): boolean {
   if (!line) return false;
   const trimmed = line.trim();
+
   return trimmed.startsWith('#') && trimmed.includes('id=');
 }
+
 function resultText(result: CallToolResult): string {
   for (const block of result.content) {
     if (block.type === 'text') {
       return block.text;
     }
   }
+
   return '';
 }
 
 const requests: RecordedRequest[] = [];
 let serverPort = 0;
 let throttleRecoverHits = 0;
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url ?? '/', `http://${req.headers.host || '127.0.0.1'}`);
   const pathname = parsedUrl.pathname;
@@ -152,12 +166,15 @@ const server = http.createServer(async (req, res) => {
   const query = Object.fromEntries(parsedUrl.searchParams.entries());
 
   const chunks: Buffer[] = [];
+
   for await (const chunk of req) {
     chunks.push(chunk as Buffer);
   }
+
   const rawBuffer = Buffer.concat(chunks);
   const rawBody = rawBuffer.toString('utf8');
   let body: RecordedBody | null = null;
+
   if (rawBody && req.headers['content-type']?.includes('application/json')) {
     try {
       body = JSON.parse(rawBody) as RecordedBody;
@@ -183,13 +200,17 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/media/redirect-source.txt') {
     res.writeHead(302, { Location: `http://127.0.0.1:${serverPort}/media/redirect-target.txt` });
     res.end();
+
     return;
   }
+
   if (pathname === '/media/redirect-target.txt') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('redirected-target-content');
+
     return;
   }
+
   if (pathname === '/media/oversized-attachment.bin') {
     const oversizedLength = MAX_ATTACHMENT_BYTES + 1;
     res.writeHead(200, {
@@ -197,11 +218,14 @@ const server = http.createServer(async (req, res) => {
       'Content-Length': String(oversizedLength),
     });
     res.end(Buffer.alloc(oversizedLength));
+
     return;
   }
+
   if (pathname.startsWith('/media/')) {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('attachment-file-content');
+
     return;
   }
 
@@ -213,11 +237,13 @@ const server = http.createServer(async (req, res) => {
       username: 'tester',
       full_name_display: 'Tester User',
     });
+
     return;
   }
 
   if (pathname === '/api/v1/users/me' && req.method === 'GET') {
     sendJson(200, { id: 1, username: 'tester', full_name_display: 'Tester User' });
+
     return;
   }
 
@@ -227,16 +253,20 @@ const server = http.createServer(async (req, res) => {
       { id: 2, username: 'alex', full_name_display: 'Alex Developer' },
       { id: 3, username: 'jsmith', full_name_display: 'John Display' },
     ]);
+
     return;
   }
 
   if (pathname === '/api/v1/projects/by_slug' && query['slug'] === 'throttle-recover' && req.method === 'GET') {
     throttleRecoverHits += 1;
+
     if (throttleRecoverHits === 1) {
       res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '0' });
       res.end(JSON.stringify({ _error_message: 'Too Many Requests' }));
+
       return;
     }
+
     sendJson(200, {
       id: 99,
       name: 'Throttle Recover',
@@ -246,12 +276,14 @@ const server = http.createServer(async (req, res) => {
       is_private: false,
       owner: { username: 'tester', full_name_display: 'Tester User' },
     });
+
     return;
   }
 
   if (pathname === '/api/v1/projects/by_slug' && query['slug'] === 'throttle-giveup' && req.method === 'GET') {
     res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '120' });
     res.end(JSON.stringify({ _error_message: 'Too Many Requests' }));
+
     return;
   }
 
@@ -270,6 +302,7 @@ const server = http.createServer(async (req, res) => {
       is_wiki_activated: true,
       is_issues_activated: true,
     });
+
     return;
   }
 
@@ -288,12 +321,14 @@ const server = http.createServer(async (req, res) => {
       is_wiki_activated: true,
       is_issues_activated: true,
     });
+
     return;
   }
 
   if (pathname === '/api/v1/milestones' && req.method === 'POST' && body?.name === 'server-error-500') {
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ _error_message: 'Internal Server Error' }));
+
     return;
   }
 
@@ -312,8 +347,10 @@ const server = http.createServer(async (req, res) => {
       is_wiki_activated: true,
       is_issues_activated: true,
     });
+
     return;
   }
+
   if (pathname === '/api/v1/projects' && req.method === 'GET') {
     sendJson(200, [
       {
@@ -331,6 +368,7 @@ const server = http.createServer(async (req, res) => {
         is_issues_activated: true,
       },
     ]);
+
     return;
   }
 
@@ -349,6 +387,7 @@ const server = http.createServer(async (req, res) => {
       is_wiki_activated: true,
       is_issues_activated: true,
     });
+
     return;
   }
 
@@ -358,6 +397,7 @@ const server = http.createServer(async (req, res) => {
       { id: 12, name: 'In progress' },
       { id: 13, name: 'Closed', is_closed: true },
     ]);
+
     return;
   }
 
@@ -367,6 +407,7 @@ const server = http.createServer(async (req, res) => {
       { id: 52, name: 'In progress' },
       { id: 53, name: 'Done', is_closed: true },
     ]);
+
     return;
   }
 
@@ -376,6 +417,7 @@ const server = http.createServer(async (req, res) => {
       { id: 62, name: 'In progress' },
       { id: 63, name: 'Closed', is_closed: true },
     ]);
+
     return;
   }
 
@@ -385,6 +427,7 @@ const server = http.createServer(async (req, res) => {
       { id: 72, name: 'In progress' },
       { id: 73, name: 'Closed', is_closed: true },
     ]);
+
     return;
   }
 
@@ -394,6 +437,7 @@ const server = http.createServer(async (req, res) => {
       { id: 22, name: 'Normal' },
       { id: 23, name: 'High' },
     ]);
+
     return;
   }
 
@@ -403,6 +447,7 @@ const server = http.createServer(async (req, res) => {
       { id: 32, name: 'Normal' },
       { id: 33, name: 'Critical' },
     ]);
+
     return;
   }
 
@@ -412,6 +457,7 @@ const server = http.createServer(async (req, res) => {
       { id: 42, name: 'Question' },
       { id: 43, name: 'Enhancement' },
     ]);
+
     return;
   }
 
@@ -422,6 +468,7 @@ const server = http.createServer(async (req, res) => {
       { id: 222, name: '3', value: 3 },
       { id: 312, name: '50', value: 50 },
     ]);
+
     return;
   }
 
@@ -431,6 +478,7 @@ const server = http.createServer(async (req, res) => {
       { id: 134, name: 'Product Owner', computable: false },
       { id: 135, name: 'UX Designer', computable: false },
     ]);
+
     return;
   }
 
@@ -448,6 +496,7 @@ const server = http.createServer(async (req, res) => {
         closed_points: [40],
       },
     ]);
+
     return;
   }
 
@@ -464,6 +513,7 @@ const server = http.createServer(async (req, res) => {
       closed_points: 0,
       project_extra_info: { name: 'Project 1' },
     });
+
     return;
   }
 
@@ -481,6 +531,7 @@ const server = http.createServer(async (req, res) => {
       total_hours: 20,
       completed_hours: 10,
     });
+
     return;
   }
 
@@ -497,6 +548,62 @@ const server = http.createServer(async (req, res) => {
       closed_points: [40],
       user_stories: [],
     });
+
+    return;
+  }
+
+  if (pathname === '/api/v1/task-points' && req.method === 'POST') {
+    sendJson(200, { task: Number(body?.task) || 301, value: body?.value ?? null });
+
+    return;
+  }
+
+  if (pathname === '/api/v1/task-priority' && req.method === 'POST') {
+    sendJson(200, { task: Number(body?.task) || 301, priority: Number(body?.priority) || 21 });
+
+    return;
+  }
+
+  if (pathname === '/api/v1/sprint-review' && req.method === 'GET') {
+    sendJson(200, {
+      milestone: { id: 10, name: 'Sprint 1', closed: false },
+      totals: {
+        stories_total: 7,
+        stories_closed: 4,
+        tasks_total: 57,
+        tasks_closed: 28,
+        points_closed: 40,
+        unestimated_count: 1,
+      },
+      members: [
+        {
+          id: 1,
+          username: 'tester',
+          full_name: 'Tester User',
+          is_member: true,
+          points_closed: 25,
+          unestimated_count: 0,
+          closed_stories: [{ id: 201, ref: 2, subject: 'Story 1', points: 5 }],
+          closed_tasks: [{ id: 301, ref: 3, subject: 'Task 1', points: 20 }],
+        },
+      ],
+    });
+
+    return;
+  }
+
+  if (pathname === '/api/v1/sprint-close' && req.method === 'GET') {
+    sendJson(200, {
+      milestone: { id: 10, name: 'Sprint 1', closed: false },
+      split: [{ id: 201, ref: 2, subject: 'Story 1', new_subject: 'Story 1 (Sprint 2)', tasks_carried: 2, tasks_left: 3 }],
+      moved: [],
+      left_open: [],
+      tasks_without_story: 0,
+      issues: 0,
+      will_close: true,
+      suggested_sprint: { name: 'Sprint 2', estimated_start: '2026-08-16', estimated_finish: '2026-08-30' },
+    });
+
     return;
   }
 
@@ -519,14 +626,17 @@ const server = http.createServer(async (req, res) => {
       description: 'Test issue description',
       tags: ['bug'],
     });
+
     return;
   }
 
   if (pathname === '/api/v1/issues' && req.method === 'GET') {
     if (query['q'] === 'empty') {
       sendJson(200, []);
+
       return;
     }
+
     if (query['q'] === 'bulk') {
       sendJson(200, Array.from({ length: 60 }, (_, i) => ({
         id: 200 + i,
@@ -536,8 +646,10 @@ const server = http.createServer(async (req, res) => {
         version: 1,
         status_extra_info: { name: 'New' },
       })));
+
       return;
     }
+
     sendJson(200, [
       {
         id: 101,
@@ -590,14 +702,17 @@ const server = http.createServer(async (req, res) => {
         tags: ['question'],
       },
     ]);
+
     return;
   }
 
   if (pathname === '/api/v1/issues' && req.method === 'POST') {
     if (body?.subject === 'FORCE_FAIL_BATCH') {
       sendJson(400, { _error_message: 'Invalid issue creation' });
+
       return;
     }
+
     sendJson(201, {
       id: 101,
       ref: 1,
@@ -609,6 +724,7 @@ const server = http.createServer(async (req, res) => {
       severity_extra_info: { name: 'Critical' },
       type_extra_info: { name: 'Bug' },
     });
+
     return;
   }
 
@@ -631,6 +747,7 @@ const server = http.createServer(async (req, res) => {
       description: 'Test issue description',
       tags: ['bug'],
     });
+
     return;
   }
 
@@ -646,6 +763,7 @@ const server = http.createServer(async (req, res) => {
       modified_date: '2026-08-02T00:00:00Z',
       description: 'A'.repeat(2500),
     });
+
     return;
   }
 
@@ -661,6 +779,7 @@ const server = http.createServer(async (req, res) => {
       created_date: '2026-08-01T00:00:00Z',
       modified_date: '2026-08-02T00:00:00Z',
     });
+
     return;
   }
 
@@ -678,6 +797,7 @@ const server = http.createServer(async (req, res) => {
       created_date: '2026-08-01T00:00:00Z',
       modified_date: '2026-08-02T00:00:00Z',
     });
+
     return;
   }
 
@@ -692,6 +812,7 @@ const server = http.createServer(async (req, res) => {
       created_date: '2026-08-01T00:00:00Z',
       modified_date: '2026-08-02T00:00:00Z',
     });
+
     return;
   }
 
@@ -708,6 +829,7 @@ const server = http.createServer(async (req, res) => {
       created_date: '2026-08-01T00:00:00Z',
       modified_date: '2026-08-02T00:00:00Z',
     });
+
     return;
   }
 
@@ -726,6 +848,7 @@ const server = http.createServer(async (req, res) => {
       version: (body?.version || 1) + 1,
       status_extra_info: { name: 'New' },
     });
+
     return;
   }
 
@@ -740,17 +863,20 @@ const server = http.createServer(async (req, res) => {
       milestone_extra_info: { name: 'Sprint 1' },
       assigned_to_extra_info: { id: 1, username: 'tester', full_name_display: 'Tester User' },
     });
+
     return;
   }
 
   if (pathname === '/api/v1/issues/101' && req.method === 'DELETE') {
     res.writeHead(204);
     res.end();
+
     return;
   }
 
   if (pathname === '/api/v1/userstories/by_ref' && req.method === 'GET') {
     const requestedRef = Number(query['ref'] || 2);
+
     if (requestedRef === 20) {
       sendJson(200, {
         id: 202,
@@ -772,8 +898,10 @@ const server = http.createServer(async (req, res) => {
         total_points: null,
         tasks: [],
       });
+
       return;
     }
+
     sendJson(200, {
       id: 201,
       ref: requestedRef,
@@ -794,6 +922,7 @@ const server = http.createServer(async (req, res) => {
       total_points: null,
       tasks: [],
     });
+
     return;
   }
 
@@ -820,6 +949,7 @@ const server = http.createServer(async (req, res) => {
         tasks: [],
       },
     ]);
+
     return;
   }
 
@@ -833,6 +963,7 @@ const server = http.createServer(async (req, res) => {
       status_extra_info: { name: 'In progress' },
       project_extra_info: { name: 'Project 1' },
     });
+
     return;
   }
 
@@ -858,8 +989,10 @@ const server = http.createServer(async (req, res) => {
       total_points: null,
       tasks: [],
     });
+
     return;
   }
+
   if (pathname === '/api/v1/userstories/202' && req.method === 'GET') {
     sendJson(200, {
       id: 202,
@@ -881,6 +1014,7 @@ const server = http.createServer(async (req, res) => {
       total_points: null,
       tasks: [],
     });
+
     return;
   }
 
@@ -899,6 +1033,7 @@ const server = http.createServer(async (req, res) => {
       created_date: '2026-08-01T00:00:00Z',
       modified_date: '2026-08-02T00:00:00Z',
     });
+
     return;
   }
 
@@ -914,6 +1049,7 @@ const server = http.createServer(async (req, res) => {
       created_date: '2026-08-01T00:00:00Z',
       modified_date: '2026-08-02T00:00:00Z',
     });
+
     return;
   }
 
@@ -933,12 +1069,14 @@ const server = http.createServer(async (req, res) => {
       milestone_extra_info: { name: 'Sprint 1' },
       project_extra_info: { name: 'Project 1' },
     });
+
     return;
   }
 
   if (pathname === '/api/v1/userstories/201' && req.method === 'DELETE') {
     res.writeHead(204);
     res.end();
+
     return;
   }
 
@@ -954,6 +1092,7 @@ const server = http.createServer(async (req, res) => {
       status_extra_info: { name: 'In progress' },
       assigned_to_extra_info: { id: 1, username: 'tester', full_name_display: 'Tester User' },
     });
+
     return;
   }
 
@@ -971,6 +1110,7 @@ const server = http.createServer(async (req, res) => {
         assigned_to_extra_info: { id: 1, username: 'tester', full_name_display: 'Tester User' },
       },
     ]);
+
     return;
   }
 
@@ -986,6 +1126,7 @@ const server = http.createServer(async (req, res) => {
       project_extra_info: { name: 'Project 1' },
       user_story_extra_info: { ref: 2, subject: 'Story 1' },
     });
+
     return;
   }
 
@@ -1002,6 +1143,7 @@ const server = http.createServer(async (req, res) => {
       status_extra_info: { name: 'In progress' },
       assigned_to_extra_info: { id: 1, username: 'tester', full_name_display: 'Tester User' },
     });
+
     return;
   }
 
@@ -1015,12 +1157,14 @@ const server = http.createServer(async (req, res) => {
       user_story: 201,
       status_extra_info: { name: 'In progress' },
     });
+
     return;
   }
 
   if (pathname === '/api/v1/tasks/301' && req.method === 'DELETE') {
     res.writeHead(204);
     res.end();
+
     return;
   }
 
@@ -1039,6 +1183,7 @@ const server = http.createServer(async (req, res) => {
       user_stories: [],
       user_stories_counts: { total: 0, progress: 0 },
     });
+
     return;
   }
 
@@ -1059,6 +1204,7 @@ const server = http.createServer(async (req, res) => {
         user_stories_counts: { total: 0, progress: 0 },
       },
     ]);
+
     return;
   }
 
@@ -1073,6 +1219,7 @@ const server = http.createServer(async (req, res) => {
       project_extra_info: { name: 'Project 1' },
       color: body?.color || '#FF5733',
     });
+
     return;
   }
 
@@ -1088,6 +1235,7 @@ const server = http.createServer(async (req, res) => {
   ) {
     res.writeHead(204);
     res.end();
+
     return;
   }
 
@@ -1105,6 +1253,7 @@ const server = http.createServer(async (req, res) => {
       epic: 401,
       user_story: body?.user_story !== undefined ? Number(body.user_story) : undefined,
     });
+
     return;
   }
 
@@ -1124,6 +1273,7 @@ const server = http.createServer(async (req, res) => {
       user_stories: [],
       user_stories_counts: { total: 0, progress: 0 },
     });
+
     return;
   }
 
@@ -1138,12 +1288,14 @@ const server = http.createServer(async (req, res) => {
       project_extra_info: { name: 'Project 1' },
       color: body?.color || '#FF5733',
     });
+
     return;
   }
 
   if (pathname === '/api/v1/epics/401' && req.method === 'DELETE') {
     res.writeHead(204);
     res.end();
+
     return;
   }
 
@@ -1157,6 +1309,7 @@ const server = http.createServer(async (req, res) => {
   ) {
     res.writeHead(204);
     res.end();
+
     return;
   }
 
@@ -1173,6 +1326,7 @@ const server = http.createServer(async (req, res) => {
       owner: 2,
       last_modifier: 2,
     });
+
     return;
   }
 
@@ -1189,12 +1343,14 @@ const server = http.createServer(async (req, res) => {
       owner: 2,
       last_modifier: 1,
     });
+
     return;
   }
 
   if (pathname === '/api/v1/wiki/602' && req.method === 'DELETE') {
     res.writeHead(204);
     res.end();
+
     return;
   }
 
@@ -1211,6 +1367,7 @@ const server = http.createServer(async (req, res) => {
       owner: 1,
       last_modifier: 2,
     });
+
     return;
   }
 
@@ -1229,6 +1386,7 @@ const server = http.createServer(async (req, res) => {
         last_modifier: 2,
       },
     ]);
+
     return;
   }
 
@@ -1245,6 +1403,7 @@ const server = http.createServer(async (req, res) => {
       owner: 1,
       last_modifier: 1,
     });
+
     return;
   }
 
@@ -1258,6 +1417,7 @@ const server = http.createServer(async (req, res) => {
     req.method === 'POST'
   ) {
     sendJson(200, {});
+
     return;
   }
 
@@ -1271,8 +1431,10 @@ const server = http.createServer(async (req, res) => {
     req.method === 'POST'
   ) {
     sendJson(200, {});
+
     return;
   }
+
   if (pathname === '/api/v1/wiki/601' && req.method === 'GET') {
     sendJson(200, {
       id: 601,
@@ -1286,6 +1448,7 @@ const server = http.createServer(async (req, res) => {
       owner: 1,
       last_modifier: 2,
     });
+
     return;
   }
 
@@ -1302,12 +1465,14 @@ const server = http.createServer(async (req, res) => {
       owner: 1,
       last_modifier: 1,
     });
+
     return;
   }
 
   if (pathname === '/api/v1/wiki/601' && req.method === 'DELETE') {
     res.writeHead(204);
     res.end();
+
     return;
   }
 
@@ -1321,6 +1486,7 @@ const server = http.createServer(async (req, res) => {
     req.method === 'POST'
   ) {
     sendJson(200, {});
+
     return;
   }
 
@@ -1334,6 +1500,7 @@ const server = http.createServer(async (req, res) => {
     req.method === 'POST'
   ) {
     sendJson(200, {});
+
     return;
   }
 
@@ -1363,10 +1530,12 @@ const server = http.createServer(async (req, res) => {
         delete_comment_date: null,
       },
     ]);
+
     return;
   }
 
   const attachmentEntities = { issues: true, userstories: true, tasks: true, epics: true, wiki: true } satisfies Record<string, true>;
+
   if (
     segments[0] === 'api' &&
     segments[1] === 'v1' &&
@@ -1375,9 +1544,11 @@ const server = http.createServer(async (req, res) => {
     (segments.length === 4 || (segments.length === 5 && isNumericId(segments[4])))
   ) {
     const isSingle = segments.length === 5;
+
     if (isSingle) {
       if (req.method === 'GET') {
         const attId = Number(segments[4]);
+
         if (attId === 702) {
           sendJson(200, {
             id: 702,
@@ -1386,8 +1557,10 @@ const server = http.createServer(async (req, res) => {
             url: 'http://foreign.example.com/media/foreign-attachment.txt',
             created_date: '2026-08-01T00:00:00Z',
           });
+
           return;
         }
+
         if (attId === 703) {
           sendJson(200, {
             id: 703,
@@ -1396,8 +1569,10 @@ const server = http.createServer(async (req, res) => {
             url: 'file:///etc/passwd',
             created_date: '2026-08-01T00:00:00Z',
           });
+
           return;
         }
+
         if (attId === 704) {
           sendJson(200, {
             id: 704,
@@ -1406,8 +1581,10 @@ const server = http.createServer(async (req, res) => {
             url: 'data:text/plain;base64,SGVsbG8=',
             created_date: '2026-08-01T00:00:00Z',
           });
+
           return;
         }
+
         if (attId === 705) {
           sendJson(200, {
             id: 705,
@@ -1416,8 +1593,10 @@ const server = http.createServer(async (req, res) => {
             url: `http://127.0.0.1:${serverPort}/media/redirect-source.txt`,
             created_date: '2026-08-01T00:00:00Z',
           });
+
           return;
         }
+
         if (attId === 706) {
           sendJson(200, {
             id: 706,
@@ -1426,8 +1605,10 @@ const server = http.createServer(async (req, res) => {
             url: `http://127.0.0.1:${serverPort}/media/oversized-attachment.bin`,
             created_date: '2026-08-01T00:00:00Z',
           });
+
           return;
         }
+
         if (attId === 707) {
           sendJson(200, {
             id: 707,
@@ -1437,8 +1618,10 @@ const server = http.createServer(async (req, res) => {
             owner: 2,
             created_date: '2026-08-01T00:00:00Z',
           });
+
           return;
         }
+
         sendJson(200, {
           id: 701,
           name: 'test-attachment.txt',
@@ -1447,11 +1630,14 @@ const server = http.createServer(async (req, res) => {
           owner: 1,
           created_date: '2026-08-01T00:00:00Z',
         });
+
         return;
       }
+
       if (req.method === 'DELETE') {
         res.writeHead(204);
         res.end();
+
         return;
       }
     } else {
@@ -1466,8 +1652,10 @@ const server = http.createServer(async (req, res) => {
             description: 'Test attachment description',
           },
         ]);
+
         return;
       }
+
       if (req.method === 'POST') {
         sendJson(201, {
           id: 701,
@@ -1477,6 +1665,7 @@ const server = http.createServer(async (req, res) => {
           created_date: '2026-08-01T00:00:00Z',
           description: 'Uploaded attachment',
         });
+
         return;
       }
     }
@@ -1489,20 +1678,26 @@ await new Promise<void>((resolve) => {
   server.listen(0, '127.0.0.1', () => {
     const addr = server.address();
     const info = addr as AddressInfo | null;
+
     if (info && 'port' in info) {
       serverPort = info.port;
     }
+
     resolve();
   });
 });
 
 const apiUrl = `http://127.0.0.1:${serverPort}/api/v1`;
+
 process.env['TAIGA_API_URL'] = apiUrl;
+
 process.env['TAIGA_USERNAME'] = 'tester';
+
 process.env['TAIGA_PASSWORD'] = 'password';
 
 const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'index.js');
 const client = new Client({ name: 'contract-test', version: '1.0.0' });
+
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [serverPath],
@@ -1539,16 +1734,20 @@ async function runToolCheck(
     } else {
       assert.notEqual(result.isError, true, `${name} (${JSON.stringify(args)}) failed unexpectedly: ${resultText(result)}`);
       assert.equal(result.structuredContent, undefined, `${name} must not return structuredContent`);
+
       if (args['op']) {
         exercisedMatrix.add(`${name}:${String(args['op'])}`);
       }
     }
+
     console.error(`  ok   ${name}${args['op'] ? `:${String(args['op'])}` : ''}`);
+
     return result;
   } catch (error) {
     failed += 1;
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`  FAIL ${name}${args['op'] ? `:${String(args['op'])}` : ''}\n       ${msg}`);
+
     return { content: [{ type: 'text', text: msg }] };
   }
 }
@@ -1885,6 +2084,27 @@ try {
     finish: '2026-09-15',
   });
   sprintStatsRes = await runToolCheck('sprints', { op: 'stats', sprint: '10' });
+  const sprintReviewRes = await runToolCheck('sprints', { op: 'review', sprint: '10' });
+  const sprintClosePreviewRes = await runToolCheck('sprints', { op: 'close_preview', sprint: '10' });
+
+  const taskAddonUpdateRes = await runToolCheck('work', {
+    op: 'update',
+    type: 'task',
+    item: 301,
+    points: 5,
+    priority: 'High',
+    blocked: true,
+    blockedNote: 'Waiting on hardware',
+    dueDate: '2026-08-20',
+  });
+
+  const multiAssigneeStoryCreateRes = await runToolCheck('work', {
+    op: 'create',
+    type: 'story',
+    project: 'project-1',
+    subject: 'Multi Assignee Created Story',
+    assignee: ['tester', 'alex'],
+  });
 
   listCommentsRes = await runToolCheck('comments', { op: 'list', type: 'issue', item: '101' });
   await runToolCheck('comments', {
@@ -2095,11 +2315,13 @@ try {
   const throttleRecoverRes = await runToolCheck('projects', { op: 'get', project: 'throttle-recover' });
 
   const giveupStart = Date.now();
+
   const throttleGiveupRes = await runToolCheck(
     'projects',
     { op: 'get', project: 'throttle-giveup' },
     { expectError: true },
   );
+
   const giveupElapsed = Date.now() - giveupStart;
 
   const serverErrorRes = await runToolCheck(
@@ -2114,18 +2336,21 @@ try {
     project: 'cached-project',
     assignee: 'alex',
   });
+
   const cacheListRes2 = await runToolCheck('work', {
     op: 'list',
     type: 'story',
     project: 'cached-project',
     assignee: 'alex',
   });
+
   const cacheListRes3 = await runToolCheck('work', {
     op: 'list',
     type: 'story',
     project: 'cached-project-b',
     assignee: 'alex',
   });
+
   const cacheListRes4 = await runToolCheck('work', {
     op: 'list',
     type: 'story',
@@ -2424,13 +2649,17 @@ try {
 
   const authCanaryPassword = 'pw-canary-do-not-leak';
   let leakPort = 0;
+
   const leakServer = http.createServer((req, res) => {
     const parsedUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? '127.0.0.1'}`);
+
     if (parsedUrl.pathname === '/api/v1/auth' && req.method === 'POST') {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ _error_message: 'Invalid credentials' }));
+
       return;
     }
+
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ _error_message: `Mock endpoint not found: ${req.method ?? 'GET'} ${parsedUrl.pathname}` }));
   });
@@ -2439,14 +2668,17 @@ try {
     leakServer.listen(0, '127.0.0.1', () => {
       const addr = leakServer.address();
       const info = addr as AddressInfo | null;
+
       if (info && 'port' in info) {
         leakPort = info.port;
       }
+
       resolve();
     });
   });
 
   const leakApiUrl = `http://127.0.0.1:${leakPort}/api/v1`;
+
   const leakTransport = new StdioClientTransport({
     command: process.execPath,
     args: [serverPath],
@@ -2458,6 +2690,7 @@ try {
     },
     stderr: 'pipe',
   });
+
   const leakClient = new Client({ name: 'contract-leak-test', version: '1.0.0' });
   let leakToolRes!: CallToolResult;
   let directAuthError: Error | undefined;
@@ -2470,6 +2703,7 @@ try {
 
     const prevApiUrl = process.env['TAIGA_API_URL'];
     process.env['TAIGA_API_URL'] = leakApiUrl;
+
     try {
       await login('leak-tester', authCanaryPassword);
     } catch (error) {
@@ -2484,19 +2718,23 @@ try {
       await leakClient.close();
     } catch {
     }
+
     leakServer.close();
   }
 
   await runContractAssertion('every (tool, op) pair in allTools was exercised', () => {
     const expectedMatrix = new Set<string>();
+
     for (const tool of allTools) {
       const properties = z.toJSONSchema(tool.inputSchema).properties ?? {};
       const opProperty = properties.op;
       const operations = opProperty && opProperty !== true && Array.isArray(opProperty.enum) ? opProperty.enum : [];
+
       for (const op of operations) {
         expectedMatrix.add(`${tool.name}:${String(op)}`);
       }
     }
+
     assert.ok(expectedMatrix.size > 0, 'derived expected op matrix must not be empty');
     assert.deepEqual(
       [...exercisedMatrix].sort(),
@@ -2508,34 +2746,44 @@ try {
   await runContractAssertion('create operations send numeric project and resolved taxonomy IDs without deprecated keys', () => {
     const issueCreates = requests.filter((r) => r.method === 'POST' && r.path === '/api/v1/issues' && r.body?.subject !== 'FORCE_FAIL_BATCH');
     assert.ok(issueCreates.length >= 2, 'expected create and batch create issue requests');
+
     for (const req of issueCreates) {
       assert.ok(req.body, 'create issue request must have body');
       assert.ok(Number.isInteger(req.body.project), `create issue project must be numeric, got ${req.body.project}`);
       assert.equal(req.body.projectId, undefined, 'create issue must not send projectId');
+
       if (req.body.status !== undefined) assert.ok(Number.isInteger(req.body.status), `create issue status must be numeric, got ${req.body.status}`);
+
       if (req.body.priority !== undefined) assert.ok(Number.isInteger(req.body.priority), `create issue priority must be numeric, got ${req.body.priority}`);
+
       if (req.body.severity !== undefined) assert.ok(Number.isInteger(req.body.severity), `create issue severity must be numeric, got ${req.body.severity}`);
+
       if (req.body.type !== undefined) assert.ok(Number.isInteger(req.body.type), `create issue type must be numeric, got ${req.body.type}`);
     }
 
     const storyCreates = requests.filter((r) => r.method === 'POST' && r.path === '/api/v1/userstories');
     assert.ok(storyCreates.length >= 2, 'expected create and batch create story requests');
+
     for (const req of storyCreates) {
       assert.ok(req.body, 'create story request must have body');
       assert.ok(Number.isInteger(req.body.project), `create story project must be numeric, got ${req.body.project}`);
       assert.equal(req.body.projectId, undefined, 'create story must not send projectId');
+
       if (req.body.status !== undefined) assert.ok(Number.isInteger(req.body.status), `create story status must be numeric, got ${req.body.status}`);
+
       if (req.body.milestone !== undefined && req.body.milestone !== null) assert.ok(Number.isInteger(req.body.milestone), `create story milestone must be numeric, got ${req.body.milestone}`);
     }
 
     const taskCreates = requests.filter((r) => r.method === 'POST' && r.path === '/api/v1/tasks');
     assert.ok(taskCreates.length >= 2, 'expected create and batch create task requests');
+
     for (const req of taskCreates) {
       assert.ok(req.body, 'create task request must have body');
       assert.ok(Number.isInteger(req.body.project), `create task project must be numeric, got ${req.body.project}`);
       assert.ok(Number.isInteger(req.body.user_story), `create task user_story must be numeric, got ${req.body.user_story}`);
       assert.equal(req.body.userStoryId, undefined, 'create task must not send userStoryId');
       assert.equal(req.body.projectId, undefined, 'create task must not send projectId');
+
       if (req.body.status !== undefined) assert.ok(Number.isInteger(req.body.status), `create task status must be numeric, got ${req.body.status}`);
     }
   });
@@ -2543,6 +2791,7 @@ try {
   await runContractAssertion('every PATCH includes an integer version field', () => {
     const patches = requests.filter((r) => r.method === 'PATCH');
     assert.ok(patches.length >= 5, `expected at least 5 PATCH requests, got ${patches.length}`);
+
     for (const req of patches) {
       assert.ok(req.body, `PATCH ${req.path} has no body`);
       assert.ok(Number.isInteger(req.body.version), `PATCH ${req.path} missing integer version: ${JSON.stringify(req.body)}`);
@@ -2595,6 +2844,7 @@ try {
 
     const apiRequests = requests.filter((r) => r.path.startsWith('/api/v1') && r.path !== '/api/v1/auth');
     assert.ok(apiRequests.length > 20, 'expected many API requests');
+
     for (const req of apiRequests) {
       assert.equal(req.headers['x-disable-pagination'], 'true', `${req.method ?? 'GET'} ${req.path} missing x-disable-pagination header`);
       assert.equal(req.headers['authorization'], 'Bearer contract-test-token', `${req.method ?? 'GET'} ${req.path} missing or invalid Bearer auth header`);
@@ -2684,6 +2934,7 @@ try {
     const issueLines = resultText(listIssuesRes).split('\n');
     assert.equal(issueLines.length, 4, `expected 1 header + 3 record lines, got ${issueLines.length}`);
     assert.ok(isListHeader(issueLines[0] ?? '') && issueLines[0]?.endsWith(': 3'), `expected header "issues in project-1: 3", got "${issueLines[0]}"`);
+
     for (let i = 1; i < issueLines.length; i++) {
       const line = issueLines[i] ?? '';
       assert.ok(
@@ -2787,9 +3038,11 @@ try {
     const foreignHostText = resultText(downloadForeignHostRes);
     assert.ok(foreignHostText.includes('foreign.example.com'), 'error must name the foreign hostname');
     assert.ok(foreignHostText.includes('127.0.0.1'), 'error must name the Taiga host');
+
     const foreignRequestRecorded = requests.some(
       (r) => r.path.includes('foreign-attachment') || (r.headers.host !== undefined && r.headers.host.includes('foreign.example.com')),
     );
+
     assert.equal(foreignRequestRecorded, false, 'stub must record no request to foreign media host');
 
     assert.equal(downloadExistingFileRes.isError, true, 'download to existing file must fail with isError: true');
@@ -2809,18 +3062,22 @@ try {
     const fileProtoText = resultText(downloadFileProtocolRes);
     assert.ok(fileProtoText.includes('unsupported protocol "file:"'), 'error must name unsupported protocol file:');
     assert.ok(fileProtoText.includes('must be http: or https:'), 'error must state required http: or https: protocols');
+
     const fileReqRecorded = requests.some(
       (r) => r.path.includes('passwd') || r.path.includes('/etc/'),
     );
+
     assert.equal(fileReqRecorded, false, 'stub must record no request to file URL after metadata fetch');
 
     assert.equal(downloadDataProtocolRes.isError, true, 'download with data: protocol must fail with isError: true');
     const dataProtoText = resultText(downloadDataProtocolRes);
     assert.ok(dataProtoText.includes('unsupported protocol "data:"'), 'error must name unsupported protocol data:');
     assert.ok(dataProtoText.includes('must be http: or https:'), 'error must state required http: or https: protocols');
+
     const dataReqRecorded = requests.some(
       (r) => r.path.includes('data-attachment'),
     );
+
     assert.equal(dataReqRecorded, false, 'stub must record no request to data URL after metadata fetch');
 
     assert.equal(downloadRedirectRes.isError, true, "download following redirect must fail with isError: true due to redirect: 'error'");
@@ -2865,6 +3122,7 @@ try {
     const invalidDeletes = requests.filter(
       (r) => r.method === 'DELETE' && (r.path.includes('#') || r.path.includes('undefined')),
     );
+
     assert.equal(invalidDeletes.length, 0, 'no DELETE request may include #ref or undefined');
   });
 
@@ -2900,17 +3158,21 @@ try {
     assert.equal(getNumericNotFoundRes.isError, true, 'an unknown numeric ID must surface as an error');
     const directGet = requests.filter((r) => r.method === 'GET' && r.path === '/api/v1/issues/9999');
     assert.equal(directGet.length, 1, `stub must record exactly one direct GET for the ID, got ${directGet.length}`);
+
     const refFallback = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/issues/by_ref' && r.query['ref'] === '9999',
     );
+
     assert.equal(refFallback.length, 0, `stub must record no by_ref lookup for a bare number, got ${refFallback.length}`);
   });
 
   await runContractAssertion('rate limit 429 with Retry-After: 0 retries and succeeds on second hit', () => {
     assert.notEqual(throttleRecoverRes.isError, true, 'throttle recover tool call must succeed');
+
     const recoverRequests = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/projects/by_slug' && r.query['slug'] === 'throttle-recover',
     );
+
     assert.equal(recoverRequests.length, 2, `stub must record request twice after 429 retry, got ${recoverRequests.length}`);
   });
 
@@ -2920,17 +3182,21 @@ try {
     assert.ok(text.includes('rate limited'), `error text must mention being rate limited: "${text}"`);
     assert.ok(text.includes('120s') || text.includes('120'), `error text must mention wait in seconds: "${text}"`);
     assert.ok(giveupElapsed < 2000, `rate limited call must return promptly under 2s (took ${giveupElapsed}ms)`);
+
     const giveupRequests = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/projects/by_slug' && r.query['slug'] === 'throttle-giveup',
     );
+
     assert.equal(giveupRequests.length, 1, `stub must record rate limited request exactly ONCE, got ${giveupRequests.length}`);
   });
 
   await runContractAssertion('server error 500 on POST is not retried and surfaces in-band error', () => {
     assert.equal(serverErrorRes.isError, true, '500 error must surface as in-band MCP error');
+
     const post500Requests = requests.filter(
       (r) => r.method === 'POST' && r.path === '/api/v1/milestones' && r.body?.name === 'server-error-500',
     );
+
     assert.equal(post500Requests.length, 1, `stub must record exactly ONE POST, proving 5xx is not retried, got ${post500Requests.length}`);
   });
 
@@ -2939,24 +3205,31 @@ try {
     assert.notEqual(cacheListRes2.isError, true, 'second cached list call for project A must succeed');
     assert.notEqual(cacheListRes3.isError, true, 'first cached list call for project B must succeed');
     assert.notEqual(cacheListRes4.isError, true, 'second cached list call for project B must succeed');
+
     const usersReqsA = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/users' && r.query['project'] === '98',
     );
+
     const usersReqsB = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/users' && r.query['project'] === '97',
     );
+
     const projectReqsA = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/projects/by_slug' && r.query['slug'] === 'cached-project',
     );
+
     const projectReqsB = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/projects/by_slug' && r.query['slug'] === 'cached-project-b',
     );
+
     const storyReqsA = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/userstories' && r.query['project'] === '98',
     );
+
     const storyReqsB = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/userstories' && r.query['project'] === '97',
     );
+
     assert.equal(usersReqsA.length, 1, `expected /users?project=98 to be requested ONCE across both calls, got ${usersReqsA.length}`);
     assert.equal(usersReqsB.length, 1, `expected /users?project=97 to be requested ONCE across both calls, got ${usersReqsB.length}`);
     assert.equal(projectReqsA.length, 1, `expected /projects/by_slug?slug=cached-project to be requested ONCE, got ${projectReqsA.length}`);
@@ -2994,8 +3267,10 @@ try {
       detail?: string;
       cause?: string;
     }
+
     const errorChain: ErrorFrame[] = [];
     let curr: Error | undefined = directAuthError;
+
     while (curr instanceof Error) {
       const apiErr = curr as ApiError;
       errorChain.push({
@@ -3007,6 +3282,7 @@ try {
       });
       curr = curr.cause instanceof Error ? curr.cause : undefined;
     }
+
     const serializedChain = JSON.stringify(errorChain);
     assert.equal(
       serializedChain.includes(authCanaryPassword),
@@ -3019,6 +3295,7 @@ try {
     const updatePatches = requests.filter(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/issues/101' && r.body?.subject === 'Updated Issue',
     );
+
     assert.equal(updatePatches.length, 1, 'expected exactly one PATCH for Updated Issue');
     const patchReq = updatePatches[0];
     assert.ok(patchReq, 'expected patchReq');
@@ -3026,9 +3303,11 @@ try {
     assert.ok(Number.isInteger(patchReq.body.version), `PATCH version must be numeric integer, got ${patchReq.body.version}`);
 
     const patchIdx = requests.indexOf(patchReq);
+
     const precedingGets = requests.slice(0, patchIdx).filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/issues/101',
     );
+
     assert.equal(precedingGets.length, 1, `expected exactly 1 preceding GET (from update resolveItem, no redundant GET in patchItem), got ${precedingGets.length}`);
 
     const allWorkPatches = requests.filter(
@@ -3039,7 +3318,9 @@ try {
         r.path === '/api/v1/epics/401'
       ),
     );
+
     assert.ok(allWorkPatches.length >= 4, 'expected at least 4 work update PATCH requests');
+
     for (const p of allWorkPatches) {
       assert.ok(p.body, 'work patch request must have body');
       assert.ok(Number.isInteger(p.body.version), `${p.path} PATCH must include numeric version, got ${p.body.version}`);
@@ -3050,6 +3331,7 @@ try {
     const updatePatches = requests.filter(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/userstories/201' && r.body?.subject === 'Updated Story',
     );
+
     assert.equal(updatePatches.length, 1, 'expected exactly one PATCH for Updated Story');
     const patchReq = updatePatches[0];
     assert.ok(patchReq, 'expected patchReq');
@@ -3070,6 +3352,7 @@ try {
     const create3Req = requests.find(
       (r) => r.method === 'POST' && r.path === '/api/v1/userstories' && r.body?.subject === 'New Story',
     );
+
     assert.ok(create3Req, 'expected POST /api/v1/userstories for New Story');
     assert.ok(create3Req.body, 'expected create3Req.body');
     assert.equal(Number.isFinite(create3Req.body.points), false, 'points: 3 must not send scalar number');
@@ -3080,9 +3363,11 @@ try {
     assert.equal('total_points' in create3Req.body, false, 'create body must NOT contain total_points');
 
     assert.notEqual(unestimatedStoryRes.isError, true, 'create unestimated story must succeed');
+
     const unestimatedReq = requests.find(
       (r) => r.method === 'POST' && r.path === '/api/v1/userstories' && r.body?.subject === 'Unestimated Story',
     );
+
     assert.ok(unestimatedReq, 'expected POST /api/v1/userstories for Unestimated Story');
     assert.ok(unestimatedReq.body, 'expected unestimatedReq.body');
     assert.equal(Number.isFinite(unestimatedReq.body.points), false, 'points: "?" must not send scalar');
@@ -3111,18 +3396,22 @@ try {
     const pointsRequests = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/points' && r.query['project'] === '1',
     );
+
     const rolesRequests = requests.filter(
       (r) => r.method === 'GET' && r.path === '/api/v1/roles' && r.query['project'] === '1',
     );
+
     assert.equal(pointsRequests.length, 1, `expected /points?project=1 to be requested ONCE due to caching, got ${pointsRequests.length}`);
     assert.equal(rolesRequests.length, 1, `expected /roles?project=1 to be requested ONCE due to caching, got ${rolesRequests.length}`);
   });
 
   await runContractAssertion('work op:update type:task with numeric parent sets user_story in PATCH body and carries integer version without parent or userStoryId keys', () => {
     assert.notEqual(taskReparentNumericRes.isError, true, 'task reparent with numeric parent must succeed');
+
     const reparentPatch = requests.find(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/tasks/301' && r.body?.subject === 'Task Reparented Numeric',
     );
+
     assert.ok(reparentPatch, 'expected PATCH /api/v1/tasks/301 for Task Reparented Numeric');
     assert.ok(reparentPatch.body, 'expected reparentPatch.body');
     assert.equal(reparentPatch.body.user_story, 202, 'PATCH body must contain user_story equal to resolved numeric story ID 202');
@@ -3136,15 +3425,18 @@ try {
 
   await runContractAssertion('work op:update type:task with #ref parent resolves via by_ref and sets numeric user_story in PATCH body', () => {
     assert.notEqual(taskReparentByRefRes.isError, true, 'task reparent with #ref parent must succeed');
+
     const byRefReq = requests.find(
       (r) => r.method === 'GET' && r.path === '/api/v1/userstories/by_ref' && r.query['ref'] === '20',
     );
+
     assert.ok(byRefReq, 'expected GET /api/v1/userstories/by_ref?ref=20 to resolve story #20');
     assert.equal(byRefReq.query['project'], '1', 'by_ref lookup must include project ID 1');
 
     const reparentPatch = requests.find(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/tasks/301' && r.body?.subject === 'Task Reparented By Ref',
     );
+
     assert.ok(reparentPatch, 'expected PATCH /api/v1/tasks/301 for Task Reparented By Ref');
     assert.ok(reparentPatch.body, 'expected reparentPatch.body');
     assert.equal(reparentPatch.body.user_story, 202, 'PATCH body must carry numeric database ID 202, not the ref string "#20"');
@@ -3167,13 +3459,16 @@ try {
     const storyPatches = requests.filter(
       (r) => r.method === 'PATCH' && r.path.startsWith('/api/v1/userstories'),
     );
+
     for (const p of storyPatches) {
       assert.notEqual(p.body?.epic, 401, 'no PATCH to /userstories should carry epic');
       assert.notEqual(p.body?.parent, 401, 'no PATCH to /userstories should carry parent');
     }
+
     const story201Patches = requests.filter(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/userstories/201',
     );
+
     assert.equal(story201Patches.length, 1, 'expected exactly one PATCH for /userstories/201 (the valid update), none from rejected parent update');
   });
 
@@ -3186,9 +3481,11 @@ try {
       issueText.includes('Field "parent" is not supported for issue.'),
       `error text must state field is not supported: "${issueText}"`,
     );
+
     const issue101Patches = requests.filter(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/issues/101',
     );
+
     assert.equal(issue101Patches.length, 2, 'expected exactly two PATCHes for /issues/101 (valid update and comment), none from rejected parent update');
 
     assert.equal(epicUpdateParentRes.isError, true, 'epic update with parent must return isError: true');
@@ -3199,9 +3496,11 @@ try {
       epicText.includes('Field "parent" is not supported for epic.'),
       `error text must state field is not supported: "${epicText}"`,
     );
+
     const epic401Patches = requests.filter(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/epics/401',
     );
+
     assert.equal(epic401Patches.length, 1, 'expected exactly one PATCH for /epics/401 (valid update), none from rejected parent update');
   });
 
@@ -3209,7 +3508,9 @@ try {
     const reparentPatches = requests.filter(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/tasks/301' && r.body?.user_story === 202,
     );
+
     assert.ok(reparentPatches.length >= 2, `expected at least 2 task reparent PATCH requests, got ${reparentPatches.length}`);
+
     for (const p of reparentPatches) {
       assert.ok(p.body, 'task reparent patch must have body');
       assert.ok(Number.isInteger(p.body.version), `task reparent PATCH must include integer version, got ${p.body.version}`);
@@ -3225,9 +3526,11 @@ try {
 
   await runContractAssertion('work op:update allows an item owned by another user when the caller is the assignee', () => {
     assert.notEqual(assigneeUpdateRes.isError, true, `update as assignee must succeed: ${resultText(assigneeUpdateRes)}`);
+
     const patch = requests.find(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/issues/104' && r.body?.subject === 'Updated Assigned Foreign Issue',
     );
+
     assert.ok(patch, 'expected PATCH /api/v1/issues/104 for the assignee update');
     assert.ok(patch.body, 'assignee update PATCH must have body');
     assert.ok(Number.isInteger(patch.body.version), `assignee update PATCH must include integer version, got ${patch.body.version}`);
@@ -3261,9 +3564,11 @@ try {
 
   await runContractAssertion('attachments op:delete refuses an attachment owned by another user and issues no DELETE', () => {
     assert.equal(otherOwnerAttachmentDeleteRes.isError, true, 'deleting another user\'s attachment must return isError: true');
+
     const deletes = requests.filter(
       (r) => r.method === 'DELETE' && r.path === '/api/v1/issues/attachments/707',
     );
+
     assert.equal(deletes.length, 0, `stub must record no DELETE for attachment 707, got ${deletes.length}`);
   });
 
@@ -3271,21 +3576,27 @@ try {
     assert.equal(otherAuthorCommentEditRes.isError, true, 'editing another user\'s comment must return isError: true');
     assert.equal(otherAuthorCommentDeleteRes.isError, true, 'deleting another user\'s comment must return isError: true');
     const foreignId = '22222222-2222-2222-2222-222222222222';
+
     const editWrites = requests.filter(
       (r) => r.method === 'POST' && r.path.includes('/edit_comment') && r.query['id'] === foreignId,
     );
+
     assert.equal(editWrites.length, 0, `stub must record no edit_comment POST for ${foreignId}, got ${editWrites.length}`);
+
     const deleteWrites = requests.filter(
       (r) => r.method === 'POST' && r.path.includes('/delete_comment') && r.query['id'] === foreignId,
     );
+
     assert.equal(deleteWrites.length, 0, `stub must record no delete_comment POST for ${foreignId}, got ${deleteWrites.length}`);
   });
 
   await runContractAssertion('work op:create story with no sprint defaults milestone to the current open sprint', () => {
     assert.notEqual(defaultedSprintStoryRes.isError, true, `defaulted sprint story create must succeed: ${resultText(defaultedSprintStoryRes)}`);
+
     const create = requests.find(
       (r) => r.method === 'POST' && r.path === '/api/v1/userstories' && r.body?.subject === 'Default Sprint Story',
     );
+
     assert.ok(create, 'expected POST /api/v1/userstories for Default Sprint Story');
     assert.ok(create.body, 'defaulted sprint create must have body');
     assert.equal(create.body.milestone, 10, `create without sprint must default milestone to the open sprint 10 from the stub, got ${create.body.milestone}`);
@@ -3293,9 +3604,11 @@ try {
 
   await runContractAssertion('work op:create story with sprint "none" sends milestone null instead of the current sprint', () => {
     assert.notEqual(noSprintStoryRes.isError, true, `explicit no-sprint story create must succeed: ${resultText(noSprintStoryRes)}`);
+
     const create = requests.find(
       (r) => r.method === 'POST' && r.path === '/api/v1/userstories' && r.body?.subject === 'Explicit No Sprint Story',
     );
+
     assert.ok(create, 'expected POST /api/v1/userstories for Explicit No Sprint Story');
     assert.ok(create.body, 'explicit no-sprint create must have body');
     assert.ok('milestone' in create.body, 'create with sprint "none" must send a milestone key');
@@ -3304,9 +3617,11 @@ try {
 
   await runContractAssertion('work op:create issue never defaults a sprint and sends no milestone key', () => {
     assert.notEqual(noSprintIssueRes.isError, true, `issue create without sprint must succeed: ${resultText(noSprintIssueRes)}`);
+
     const create = requests.find(
       (r) => r.method === 'POST' && r.path === '/api/v1/issues' && r.body?.subject === 'No Sprint Issue',
     );
+
     assert.ok(create, 'expected POST /api/v1/issues for No Sprint Issue');
     assert.ok(create.body, 'issue create must have body');
     assert.equal('milestone' in create.body, false, `issue create must not send a milestone key, got ${JSON.stringify(create.body.milestone)}`);
@@ -3315,21 +3630,27 @@ try {
   await runContractAssertion('work op:link and op:unlink refuse a story owned and assigned to another user and issue no related_userstories write', () => {
     assert.equal(otherOwnerLinkRes.isError, true, 'linking another user\'s story must return isError: true');
     assert.equal(otherOwnerUnlinkRes.isError, true, 'unlinking another user\'s story must return isError: true');
+
     const linkPosts = requests.filter(
       (r) => r.method === 'POST' && r.path === '/api/v1/epics/401/related_userstories' && r.body?.user_story === 203,
     );
+
     assert.equal(linkPosts.length, 0, `stub must record no POST linking story 203, got ${linkPosts.length}`);
+
     const unlinkDeletes = requests.filter(
       (r) => r.method === 'DELETE' && r.path === '/api/v1/epics/401/related_userstories/203',
     );
+
     assert.equal(unlinkDeletes.length, 0, `stub must record no DELETE unlinking story 203, got ${unlinkDeletes.length}`);
   });
 
   await runContractAssertion('work op:update allows an item owned by another user when the caller is only in assigned_users and issues the PATCH', () => {
     assert.notEqual(multiAssigneeUpdateRes.isError, true, `assigned_users update must succeed: ${resultText(multiAssigneeUpdateRes)}`);
+
     const patch = requests.find(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/issues/106' && r.body?.subject === 'Updated Multi Assignee Foreign Issue',
     );
+
     assert.ok(patch, 'expected PATCH /api/v1/issues/106 for the assigned_users update');
     assert.ok(patch.body, 'assigned_users update PATCH must have body');
     assert.ok(Number.isInteger(patch.body.version), `assigned_users update PATCH must include integer version, got ${patch.body.version}`);
@@ -3342,19 +3663,24 @@ try {
       taskPatchesBeforeCrossProject,
       `cross-project reparent must record no PATCH to /api/v1/tasks/301, count went ${taskPatchesBeforeCrossProject} -> ${taskPatchesAfterCrossProject}`,
     );
+
     const crossProjectPatches = requests.filter(
       (r) => r.method === 'PATCH' && r.path === '/api/v1/tasks/301' && r.body?.subject === 'Task Reparented Cross Project',
     );
+
     assert.equal(crossProjectPatches.length, 0, `stub must record no PATCH for the cross-project reparent, got ${crossProjectPatches.length}`);
   });
 
   await runContractAssertion('work op:create batch stories with top-level sprint "none" sends milestone null on every POST', () => {
     assert.notEqual(batchNoSprintStoriesRes.isError, true, `batch no-sprint create must succeed: ${resultText(batchNoSprintStoriesRes)}`);
+
     const creates = requests.filter(
       (r) => r.method === 'POST' && r.path === '/api/v1/userstories'
         && (r.body?.subject === 'Batch No Sprint Story 1' || r.body?.subject === 'Batch No Sprint Story 2'),
     );
+
     assert.equal(creates.length, 2, `expected 2 POST bodies for the no-sprint batch, got ${creates.length}`);
+
     for (const create of creates) {
       assert.ok(create.body, 'batch no-sprint create must have body');
       assert.ok('milestone' in create.body, 'batch create with top-level sprint "none" must send a milestone key');
@@ -3364,11 +3690,14 @@ try {
 
   await runContractAssertion('work op:create batch stories with a top-level sprint name sends that sprint id on every POST', () => {
     assert.notEqual(batchSprintStoriesRes.isError, true, `batch sprint create must succeed: ${resultText(batchSprintStoriesRes)}`);
+
     const creates = requests.filter(
       (r) => r.method === 'POST' && r.path === '/api/v1/userstories'
         && (r.body?.subject === 'Batch Sprint Story 1' || r.body?.subject === 'Batch Sprint Story 2'),
     );
+
     assert.equal(creates.length, 2, `expected 2 POST bodies for the sprint batch, got ${creates.length}`);
+
     for (const create of creates) {
       assert.ok(create.body, 'batch sprint create must have body');
       assert.equal(create.body.milestone, 10, `batch top-level sprint name must send milestone 10, got ${create.body.milestone}`);
@@ -3377,26 +3706,66 @@ try {
 
   await runContractAssertion('work op:create batch stories lets a per-item sprint override the top-level sprint', () => {
     assert.notEqual(batchSprintOverrideRes.isError, true, `batch sprint override create must succeed: ${resultText(batchSprintOverrideRes)}`);
+
     const override = requests.find(
       (r) => r.method === 'POST' && r.path === '/api/v1/userstories' && r.body?.subject === 'Batch Sprint Story Override',
     );
+
     assert.ok(override, 'expected POST /api/v1/userstories for Batch Sprint Story Override');
     assert.ok(override.body, 'batch sprint override create must have body');
     assert.equal(override.body.milestone, null, `per-item sprint "none" must beat the top-level sprint, got ${override.body.milestone}`);
   });
 
+  await runContractAssertion('sprints op:review and op:close_preview query monsson selfhost endpoints and format output', () => {
+    assert.notEqual(sprintReviewRes.isError, true, `sprint review must succeed: ${resultText(sprintReviewRes)}`);
+    const reviewText = resultText(sprintReviewRes);
+    assert.ok(reviewText.includes('stories closed: 4/7'), `review output must include stories closed: "${reviewText}"`);
+    assert.ok(reviewText.includes('Tester User (tester) | 25pts'), `review output must include member breakdown: "${reviewText}"`);
+
+    assert.notEqual(sprintClosePreviewRes.isError, true, `sprint close_preview must succeed: ${resultText(sprintClosePreviewRes)}`);
+    const closeText = resultText(sprintClosePreviewRes);
+    assert.ok(closeText.includes('will close: yes'), `close_preview must include will close: "${closeText}"`);
+    assert.ok(closeText.includes('Sprint 2 (2026-08-16..2026-08-30)'), `close_preview must include suggested next sprint: "${closeText}"`);
+  });
+
+  await runContractAssertion('work task points/priority add-ons and story multi-assignee array write expected payloads', () => {
+    assert.notEqual(taskAddonUpdateRes.isError, true, `task addon update must succeed: ${resultText(taskAddonUpdateRes)}`);
+
+    const taskPointsPost = requests.find((r) => r.method === 'POST' && r.path === '/api/v1/task-points' && r.body?.task === 301);
+    assert.ok(taskPointsPost, 'expected POST /api/v1/task-points for task 301');
+    assert.equal(taskPointsPost.body?.value, 5, `expected task points value 5, got ${taskPointsPost.body?.value}`);
+
+    const taskPriorityPost = requests.find((r) => r.method === 'POST' && r.path === '/api/v1/task-priority' && r.body?.task === 301);
+    assert.ok(taskPriorityPost, 'expected POST /api/v1/task-priority for task 301');
+    assert.equal(taskPriorityPost.body?.priority, 23, `expected resolved priority ID 23, got ${taskPriorityPost.body?.priority}`);
+
+    assert.notEqual(multiAssigneeStoryCreateRes.isError, true, `multi-assignee story create must succeed: ${resultText(multiAssigneeStoryCreateRes)}`);
+
+    const multiStoryPost = requests.find(
+      (r) => r.method === 'POST' && r.path === '/api/v1/userstories' && r.body?.subject === 'Multi Assignee Created Story',
+    );
+
+    assert.ok(multiStoryPost, 'expected POST /api/v1/userstories for Multi Assignee Created Story');
+    assert.deepEqual(multiStoryPost.body?.assigned_users, [1, 2], 'multi-assignee story create must send assigned_users [1, 2]');
+    assert.equal(multiStoryPost.body?.assigned_to, 1, 'multi-assignee story create must set primary assigned_to to first resolved user 1');
+  });
+
 } finally {
   try {
     await rm(tmpDownloadPath, { force: true });
+
     if (tmpExistingDir) {
       await rm(tmpExistingDir, { recursive: true, force: true });
     }
   } catch {
   }
+
   await client.close();
   server.close();
 }
 
 console.error(`\n${exercisedMatrix.size} (tool, op) pairs exercised`);
+
 console.error(failed ? `${failed} contract checks FAILED` : 'all contract checks passed');
+
 process.exit(failed ? 1 : 0);
