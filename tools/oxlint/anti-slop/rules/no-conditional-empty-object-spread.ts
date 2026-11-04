@@ -22,6 +22,7 @@ function isConditionalEmptyObjectSpread(node: ESTree.Expression): boolean {
   );
 }
 
+/** Ban conditional empty-object spreads without changing their omission semantics. */
 export const noConditionalEmptyObjectSpreadRule = defineRule({
   meta: {
     type: "suggestion",

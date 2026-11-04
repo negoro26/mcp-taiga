@@ -89,6 +89,7 @@ export interface TaigaWorkItem {
   is_closed?: boolean;
   created_date?: string;
   modified_date?: string;
+  owner?: number | null;
   tags?: (string | string[])[];
   total_watchers?: number;
   watchers?: number[];
@@ -114,6 +115,10 @@ export interface TaigaWorkItem {
   user_stories?: TaigaWorkItem[];
   color?: string;
   user_stories_counts?: { total?: number; progress?: number };
+  due_date?: string | null;
+  due_date_reason?: string | null;
+  is_blocked?: boolean;
+  blocked_note?: string | null;
 }
 
 export interface TaigaMilestone {
@@ -145,6 +150,41 @@ export interface TaigaMilestoneStats {
   completed_hours?: PointsValue | null;
 }
 
+export interface TaigaSprintReviewMember {
+  id: number;
+  username: string;
+  full_name: string;
+  is_member: boolean;
+  points_closed: number;
+  unestimated_count: number;
+  closed_stories: Array<{ id: number; ref: number; subject: string; points?: number | null }>;
+  closed_tasks: Array<{ id: number; ref: number; subject: string; points?: number | null }>;
+}
+
+export interface TaigaSprintReview {
+  milestone: { id: number; name: string; closed: boolean };
+  totals: {
+    stories_total: number;
+    stories_closed: number;
+    tasks_total: number;
+    tasks_closed: number;
+    points_closed: number;
+    unestimated_count: number;
+  };
+  members: TaigaSprintReviewMember[];
+}
+
+export interface TaigaSprintClosePreview {
+  milestone: { id: number; name: string; closed?: boolean };
+  split: Array<{ id: number; ref: number; subject: string; new_subject: string; tasks_carried: number; tasks_left: number }>;
+  moved: Array<{ id: number; ref: number; subject: string }>;
+  left_open: Array<{ id: number; ref: number; subject: string; reason: string }>;
+  tasks_without_story: number;
+  issues: number;
+  will_close: boolean;
+  suggested_sprint?: { name: string; estimated_start: string; estimated_finish: string };
+}
+
 export interface TaigaHistoryEntry {
   id: string;
   comment?: string;
@@ -160,6 +200,7 @@ export interface TaigaAttachment {
   name?: string;
   size?: number;
   url?: string;
+  owner?: number | null;
   description?: string;
   created_date?: string;
   object_id?: number;

@@ -27,18 +27,23 @@ export const ITEM_TYPES = {
 
 export function itemType(type: string): ItemTypeMeta {
   const meta: ItemTypeMeta | undefined = ITEM_TYPES[type as ItemTypeKey];
+
   if (!meta) {
     throw new Error(`Unsupported item type "${type}". Expected one of: ${Object.keys(ITEM_TYPES).join(', ')}`);
   }
+
   return meta;
 }
 
 export function isNumericId(value: string | number | null | undefined): boolean {
   const text = String(value ?? '').trim();
+
   if (text.length === 0) return false;
+
   for (const character of text) {
     if (character < '0' || character > '9') return false;
   }
+
   return true;
 }
 
@@ -46,20 +51,26 @@ export async function resolveProjectId(projectIdentifier: string | number): Prom
   if (projectIdentifier === undefined || projectIdentifier === null || projectIdentifier === '') {
     throw new Error(ERROR_MESSAGES.MISSING_PROJECT_ID);
   }
+
   if (isNumericId(projectIdentifier)) return Number(projectIdentifier);
   const project = await getMetadata<TaigaProject>(`${API_ENDPOINTS.PROJECTS}/by_slug`, { slug: projectIdentifier });
+
   return project.id;
 }
 
 export async function resolveWikiPage(page: string | number, project?: string | number): Promise<TaigaWikiPage> {
   const raw = String(page).trim();
+
   if (isNumericId(raw)) {
     return get<TaigaWikiPage>(`${API_ENDPOINTS.WIKI}/${raw}`);
   }
+
   if (!project) {
     throw new Error('Project ID or slug is required when resolving a wiki page by slug.');
   }
+
   const projectId = await resolveProjectId(project);
+
   return get<TaigaWikiPage>(`${API_ENDPOINTS.WIKI}/by_slug`, { slug: raw, project: projectId });
 }
 
@@ -67,6 +78,7 @@ export async function resolveProject(projectIdentifier: string | number): Promis
   if (isNumericId(projectIdentifier)) {
     return get<TaigaProject>(`${API_ENDPOINTS.PROJECTS}/${projectIdentifier}`);
   }
+
   return get<TaigaProject>(`${API_ENDPOINTS.PROJECTS}/by_slug`, { slug: projectIdentifier });
 }
 
@@ -81,21 +93,15 @@ export async function resolveItem(
   if (raw.startsWith('#')) {
     if (!projectIdentifier) throw new Error(ERROR_MESSAGES.MISSING_PROJECT_ID);
     const project = await resolveProjectId(projectIdentifier);
+
     return get<TaigaWorkItem>(`${path}/by_ref`, { ref: raw.slice(1), project });
   }
+
   if (!isNumericId(raw)) {
     throw new Error(`${label} identifier "${identifier}" is not a numeric ID or a #reference.`);
   }
-  try {
-    return await get<TaigaWorkItem>(`${path}/${raw}`);
-  } catch (error) {
-    const apiErr = error as ApiError;
-    if (apiErr.status === 404 && projectIdentifier) {
-      const project = await resolveProjectId(projectIdentifier);
-      return get<TaigaWorkItem>(`${path}/by_ref`, { ref: raw, project });
-    }
-    throw error;
-  }
+
+  return get<TaigaWorkItem>(`${path}/${raw}`);
 }
 
 const TAXONOMY = {
@@ -110,13 +116,16 @@ const TAXONOMY = {
 
 export function listTaxonomy(kind: TaxonomyKind, projectId: number): Promise<TaigaTaxonomyItem[]> {
   const endpoint = TAXONOMY[kind];
+
   if (!endpoint) throw new Error(`Unknown taxonomy "${kind}"`);
+
   return getMetadata<TaigaTaxonomyItem[]>(endpoint, { project: projectId });
 }
 
 export function findIdByName(collection: TaigaTaxonomyItem[], name?: string | number): number | undefined {
   if (!name) return undefined;
   const wanted = String(name).toLowerCase();
+
   return collection.find((item) => item.name?.toLowerCase() === wanted)?.id;
 }
 
@@ -128,9 +137,11 @@ export async function resolveTaxonomyId(
   if (!name) return undefined;
   const options = await listTaxonomy(kind, projectId);
   const id = findIdByName(options, name);
+
   if (id === undefined) {
     throw new Error(`No ${kind.split('_').join(' ')} named "${name}" in this project. Available: ${options.map((o) => o.name).join(', ')}`);
   }
+
   return id;
 }
 
@@ -140,23 +151,59 @@ function listProjectUsers(projectId: number): Promise<TaigaUser[]> {
 
 export async function projectUserNames(projectId: number): Promise<Map<number, string>> {
   const users = await listProjectUsers(projectId);
+
   return new Map(users.map((u) => [u.id, u.full_name_display || u.full_name || u.username || `#${u.id}`]));
 }
 
 export async function resolveMemberId(projectId: number, assignee: string | number): Promise<number> {
   const wanted = String(assignee).trim();
+
   if (isNumericId(wanted)) return Number(wanted);
-  if (wanted.toLowerCase() === 'me') return (await getMetadata<TaigaUser>(API_ENDPOINTS.USERS_ME)).id;
+
+  if (wanted.toLowerCase() === 'me') return currentUserId();
 
   const users = await listProjectUsers(projectId);
   const needle = wanted.toLowerCase();
+
   const match = users.find((u) => [u.username, u.full_name, u.full_name_display, u.email]
     .some((value) => value?.toLowerCase() === needle));
+
   if (!match) {
     const known = users.map((u) => u.username).filter(Boolean).join(', ');
     throw new Error(`No member of this project matches "${assignee}". Available usernames: ${known}`);
   }
+
   return match.id;
+}
+
+export async function currentUserId(): Promise<number> {
+  return (await getMetadata<TaigaUser>(API_ENDPOINTS.USERS_ME)).id;
+}
+
+export interface OwnedRecord {
+  owner?: number | null;
+  assigned_to?: number | null;
+  assigned_users?: number[];
+}
+
+export async function assertWritable(
+  record: OwnedRecord,
+  label: string,
+  access: 'update' | 'delete',
+): Promise<void> {
+  const owner = record.owner;
+
+  if (owner === undefined || owner === null) {
+    throw new Error(`Refusing to ${access} ${label}: Taiga did not report an owner, so ownership cannot be verified.`);
+  }
+
+  const me = await currentUserId();
+
+  if (owner === me) return;
+
+  if (access === 'update' && (record.assigned_to === me || record.assigned_users?.includes(me) === true)) return;
+  const rule = access === 'delete' ? 'only the creator can delete one' : 'only the creator or the assignee can update one';
+  throw new Error(`Refusing to ${access} ${label}: it belongs to another user; ${rule}.`);
 }
 
 export async function patchItem<T>(
@@ -168,14 +215,18 @@ export async function patchItem<T>(
   const known = target instanceof Object ? target : null;
   const id = known ? known.id : target;
   const version = known?.version ?? (await get<TaigaWorkItem>(`${path}/${id}`)).version;
+
   try {
     return await patch<T>(`${path}/${id}`, { ...payload, version });
   } catch (error) {
     const apiErr = error as ApiError;
+
     if (apiErr.status === 400 && JSON.stringify(apiErr.detail ?? '').includes('version')) {
       const fresh = await get<TaigaWorkItem>(`${path}/${id}`);
+
       return patch<T>(`${path}/${id}`, { ...payload, version: fresh.version });
     }
+
     throw error;
   }
 }
@@ -189,25 +240,61 @@ export async function resolveSprintId(
   if (identifier === undefined || identifier === null) {
     throw new Error('Sprint identifier cannot be empty.');
   }
+
   const raw = String(identifier).trim();
+
   if (!raw) {
     throw new Error('Sprint identifier cannot be empty.');
   }
+
   if (SPRINT_CLEAR_SENTINELS.has(raw.toLowerCase())) {
     return null;
   }
+
   if (isNumericId(raw)) {
     return Number(raw);
   }
+
   const project = await resolveProjectId(projectId);
   const sprints = await get<TaigaMilestone[]>(API_ENDPOINTS.MILESTONES, { project });
   const wanted = raw.toLowerCase();
   const match = sprints.find((s) => s.name?.toLowerCase() === wanted);
+
   if (!match) {
     const available = sprints.map((s) => s.name).join(', ');
     throw new Error(`No sprint named "${raw}" in this project. Available: ${available || 'none'}`);
   }
+
   return match.id;
+}
+
+export async function currentSprintId(projectId: number): Promise<number | null> {
+  const sprints = await get<TaigaMilestone[]>(API_ENDPOINTS.MILESTONES, { project: projectId });
+  const open = sprints.filter((s) => s.closed !== true);
+
+  if (open.length === 0) return null;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const start = (s: TaigaMilestone): string => s.estimated_start ?? '';
+  const latestFirst = [...open].sort((a, b) => start(b).localeCompare(start(a)));
+
+  const covering = latestFirst.find((s) => start(s) !== ''
+    && start(s).slice(0, 10) <= today
+    && today <= (s.estimated_finish ?? '9999-12-31').slice(0, 10));
+
+  return (covering ?? latestFirst[0])?.id ?? null;
+}
+
+export function assertSameProject(
+  record: { project?: number | null },
+  expected: number | null | undefined,
+  label: string,
+): void {
+  const project = record.project;
+
+  if (project === undefined || project === null || project !== expected) {
+    throw new Error(`Refusing to use ${label}: Taiga did not report which project it is in, or it is in a different project from the item being changed.`);
+  }
 }
 
 export async function resolvePointsPayload(projectId: number, points: string | number): Promise<Record<string, number>> {
@@ -218,6 +305,7 @@ export async function resolvePointsPayload(projectId: number, points: string | n
 
   const isNumeric = Number.isFinite(Number(points));
   let matched: TaigaPointValue | undefined;
+
   if (isNumeric) {
     const num = Number(points);
     matched = pointTaxonomy.find((p) => p.value !== null && p.value !== undefined && p.value === num);
@@ -231,13 +319,16 @@ export async function resolvePointsPayload(projectId: number, points: string | n
       .map((p) => p.name)
       .filter((n): n is string => n !== undefined)
       .join(', ');
+
     throw new Error(`No point value "${points}" in this project. Available: ${available}`);
   }
 
   const computableRoles = roles.filter((r) => r.computable);
+
   if (computableRoles.length === 0) {
     throw new Error('This project has no computable role, so points cannot be set.');
   }
+
   if (computableRoles.length > 1) {
     const roleNames = computableRoles.map((r) => r.name ?? String(r.id)).join(', ');
     throw new Error(`Project has multiple computable roles (${roleNames}). Points must be set per role in the Taiga UI.`);

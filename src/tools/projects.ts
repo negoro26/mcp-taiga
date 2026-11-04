@@ -14,15 +14,13 @@ const inputSchema = z.object({
 
 type Args = z.output<typeof inputSchema>;
 
-const description = `List or inspect Taiga projects and verify credentials.
+const description = `List or inspect Taiga projects and verify credentials. Credentials come from TAIGA_USERNAME and TAIGA_PASSWORD.
 
-Credentials come from TAIGA_USERNAME and TAIGA_PASSWORD in the environment; the server authenticates on first use. Use whoami to verify them.
-
-| op | required args | optional args | notes |
-|---|---|---|---|
-| list | | | List projects where authenticated user is member |
-| get | project | | Inspect project metadata, owner, member count, active modules |
-| whoami | | | Verify credentials and show current user info |`;
+| op | required | notes |
+|---|---|---|
+| list | | Projects where you are a member |
+| get | project | Metadata, owner, member count, active modules |
+| whoami | | The authenticated user |`;
 
 const annotations: ToolAnnotations = { readOnlyHint: true, idempotentHint: true, openWorldHint: true };
 
@@ -30,6 +28,7 @@ const handler = async ({ op, project }: Args): Promise<CallToolResult> => {
   if (op === 'list') {
     const me = await get<TaigaUser>(API_ENDPOINTS.USERS_ME);
     const projects = await get<TaigaProject[]>(API_ENDPOINTS.PROJECTS, { member: me.id });
+
     return createSuccessResponse(listing('projects', projects.map(projectLine)));
   }
 
@@ -37,7 +36,9 @@ const handler = async ({ op, project }: Args): Promise<CallToolResult> => {
     if (!project) {
       throw new Error('Project ID or slug is required for op "get".');
     }
+
     const p = await resolveProject(project);
+
     const modules = [
       p.is_epics_activated && 'epics',
       p.is_backlog_activated && 'backlog',
@@ -65,9 +66,11 @@ const handler = async ({ op, project }: Args): Promise<CallToolResult> => {
 
   if (op === 'whoami') {
     const me = await get<TaigaUser>(API_ENDPOINTS.USERS_ME);
+
     const text = [me.id, me.username, me.full_name_display || me.full_name, me.email]
       .filter(Boolean)
       .join(' ');
+
     return createSuccessResponse(text);
   }
 
