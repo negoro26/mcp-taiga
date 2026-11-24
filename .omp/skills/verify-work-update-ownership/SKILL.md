@@ -16,7 +16,7 @@ The guard is sound only because the PATCH carries the `version` that `assertWrit
 npm run verify:ownership
 ```
 
-This needs Java 11 or later, curl, and node. The first run downloads TLC 1.7.4 (pinned by SHA-256) to `~/.cache/mcp-taiga/`. A run takes about 3 seconds. It prints one line per covered region, then one line per rule. It exits 0 only when every region is in sync and every rule matches its expected result.
+This needs Java 11 or later, curl, and node. The first run downloads TLC 1.7.4 (pinned by SHA-256) to `~/.cache/mcp-taiga/`. A run takes about 3 seconds. It prints one line per covered region, then one line per rule. It exits 0 only when every region is in sync and every rule matches its expected result. For an unexpected result it prints TLC's trace. Each `State N: <Action ...>` line names the step.
 
 | Rule | Expected | Meaning |
 | --- | --- | --- |
@@ -25,20 +25,20 @@ This needs Java 11 or later, curl, and node. The first run downloads TLC 1.7.4 (
 | `OwnedAtRetryPatch` | violated, known finding 1 | The version-conflict retry can land on a colleague's item. |
 | `OwnedAtAddonWrite` | violated, known finding 2 | A task `points` or `priority` write can land on a colleague's item. |
 
-Read every TLC result with `/skill:statechart`. Give it a scratch copy of the spec, and a config that lists all four rules as `INVARIANT`. It tells each violation as its shortest path in plain words.
+Read every TLC result with `/skill:statechart`. Give it a scratch copy of the spec, and a config that lists all four rules as `INVARIANT`. It checks them one at a time, and tells each violation as its shortest path in plain words. If that skill is not available to you, read the trace that `check.sh` prints.
 
 ## Known findings
 
-Both were replayed against the real server through a fake Taiga, and both returned `Updated task`.
+Both reproduce on the real server. `npm run build && node verify/ownership/replay.mjs` replays them through a fake Taiga on 127.0.0.1. It exits 0 while both still reproduce.
 
 1. **Retry.** You pass the ownership check. A colleague reassigns the item. Taiga rejects the PATCH because the version is stale. `patchItem` re-reads only the version (`src/taiga.ts`, the `status === 400` branch) and PATCHes again without re-checking ownership. Taiga saves the edit. To fix it, re-run `assertWritable` on the refetched item before the second PATCH. A model with that fix passes `OwnedAtRetryPatch`.
 2. **Task points and priority.** You pass the ownership check. A colleague reassigns the task. `POST /task-points` or `POST /task-priority` carries no version, so Taiga saves it. The client cannot close this window. It needs a version or an ownership check on the server.
 
-When a fix lands, move that rule from `known` to `holds` in `verify/ownership/check.sh`, and delete its entry here. Never move a rule into `known` to make a run pass. A new violation is a bug report for the user, not a change to the model.
+When a fix lands, move that rule from `known` to `holds` in `verify/ownership/check.sh`, drop its scenario from `replay.mjs`, and delete its entry here. Never move a rule into `known` to make a run pass. A new violation is a bug report for the user, not a change to the model.
 
 ## Model to code
 
-The spec is `verify/ownership/WorkUpdateOwnership.tla`. Each action is one HTTP request or one local decision in the code.
+The spec is `verify/ownership/WorkUpdateOwnership.tla`. Each action is one HTTP request or one local decision in the code. Model each new GET as its own action that copies from `item`. Model each new write as its own action that calls `Land(kind)`. A colleague's step can then fall between them.
 
 | Action | Code |
 | --- | --- |
@@ -67,7 +67,7 @@ It leaves out:
 
 ## Real bug or modeling error
 
-Replay the shortest path against the real code before you report it. Use a local fake Taiga that performs the colleague's step at the same point, as the contract server in `test/apiContractTest.ts` does. Drive `node dist/src/index.js` over stdio. If the real code does not reproduce the path, treat the model as wrong until you show otherwise. Fix the action that differs from the code, not the rule.
+Replay the shortest path against the real code before you report it. Add a scenario to `SCENARIOS` in `verify/ownership/replay.mjs`, or adapt its fake Taiga so the colleague's step happens at the same point. Then run `npm run build && node verify/ownership/replay.mjs`, which drives `node dist/src/index.js` over stdio. If the real code does not reproduce the path, treat the model as wrong until you show otherwise. Fix the action that differs from the code, not the rule.
 
 ## Keep it in step
 
@@ -75,6 +75,6 @@ Replay the shortest path against the real code before you report it. Use a local
 - `resolveItem`, `assertWritable`, and `patchItem` in `src/taiga.ts`
 - the `if (op === 'update')` block in `src/tools/work.ts`
 
-`CHANGED` means re-read that region against the table above. Edit the matching action if the behavior changed, then rerun. Move the sync commit forward only after the model matches the code at the new commit, and the rules match their expected results there. Add a region to `REGIONS` in `coverage.mjs` and to the table above when a new step joins the flow.
+`CHANGED` means re-read that region against the table above. If the behavior changed, edit the matching action, then rerun. Move the sync commit forward only after the model matches the code at the new commit, and the rules match their expected results there. When a new step joins the flow, add its region to `REGIONS` in `coverage.mjs` and to the table above.
 
 Sync commit: `633a048`
