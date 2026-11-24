@@ -2,28 +2,13 @@
 
 Thanks for your interest in improving the Taiga MCP server.
 
-## Branching Model
+## Branching and releases
 
-Three long-lived branches, promoted in one direction only:
+Branch off `main` and open a pull request to `main`.
 
-```text
-feature/* ──► dev ──► staging ──► main ──► tag v* (npm release)
-```
+Releases are automatic. On every push to `main`, release-please opens or updates a release PR that bumps `package.json` and writes `CHANGELOG.md` from the commit messages. Merging it tags `v<version>`, creates the GitHub release, re-runs type check, lint, and tests, and publishes to npm through trusted publishing.
 
-| Branch | Purpose | Stability |
-| --- | --- | --- |
-| `dev` | Default integration branch. All feature work lands here first. | May break. |
-| `staging` | Release candidate. Integration and soak testing. | Should work; not guaranteed. |
-| `main` | Production. Matches the latest published npm release. | Always releasable. |
-
-Workflow:
-
-1. Branch off `dev`: `git switch -c feature/my-change dev`
-2. Open a pull request targeting **`dev`**.
-3. When `dev` is coherent, open `dev` → `staging`.
-4. To cut a release: open `staging` → `main`, update `CHANGELOG.md` and the version in `package.json`, then tag on `main`.
-
-Tagging `v*` on `main` triggers the publish workflow, which re-runs type check, lint, and the full test suite before publishing to npm (`NPM_TOKEN` secret required).
+`feat` bumps the minor version, `fix` the patch, and `feat!` or a `BREAKING CHANGE:` footer the major.
 
 ## Commit Format
 
