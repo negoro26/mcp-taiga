@@ -3926,7 +3926,7 @@ try {
     assert.equal(override.body.milestone, null, `per-item sprint "none" must beat the top-level sprint, got ${override.body.milestone}`);
   });
 
-  await runContractAssertion('sprints op:review and op:close_preview query monsson selfhost endpoints and format output', () => {
+  await runContractAssertion('sprints op:review and op:close_preview query pmdashboard endpoints and format output', () => {
     assert.notEqual(sprintReviewRes.isError, true, `sprint review must succeed: ${resultText(sprintReviewRes)}`);
     const reviewText = resultText(sprintReviewRes);
     assert.ok(reviewText.includes('stories closed: 4/7'), `review output must include stories closed: "${reviewText}"`);
