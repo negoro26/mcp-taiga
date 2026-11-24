@@ -181,7 +181,7 @@ Comments are banned in source and enforced by the `anti-slop/no-comments` lint r
 
 ## Contributing
 
-Pull requests target `dev`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch model and commit rules.
+Pull requests target `main`. See [CONTRIBUTING.md](CONTRIBUTING.md) for releases and commit rules.
 
 ## License
 
