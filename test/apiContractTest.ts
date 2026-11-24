@@ -15,6 +15,10 @@ import { isNumericId } from '../src/taiga.js';
 import { MAX_ATTACHMENT_BYTES } from '../src/constants.js';
 import { login } from '../src/api.js';
 import type {
+  ActivityEntry,
+  ActivityItemTime,
+  ActivitySummary,
+  ActivityToday,
   ApiError,
   AuthResponse,
   CallToolResult,
@@ -96,7 +100,11 @@ type MockPayload =
   | TaigaHistoryEntry[]
   | TaigaUser
   | TaigaUser[]
-  | AuthResponse;
+  | AuthResponse
+  | ActivityEntry
+  | ActivityItemTime
+  | ActivitySummary
+  | ActivityToday;
 
 function isDigitsOnly(value: string): boolean {
   const text = value.trim();
@@ -158,6 +166,7 @@ function resultText(result: CallToolResult): string {
 const requests: RecordedRequest[] = [];
 let serverPort = 0;
 let throttleRecoverHits = 0;
+const activityLogged: ActivityEntry[] = [];
 
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url ?? '/', `http://${req.headers.host || '127.0.0.1'}`);
@@ -1671,6 +1680,92 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (pathname === '/api/v1/activity/today' && req.method === 'GET') {
+    const today: ActivityToday = {
+      today: '2026-11-24',
+      can_log: true,
+      mine: activityLogged,
+      tasks: [
+        { id: 301, ref: 3, subject: 'Task 1', mine: true, closed: false },
+        { id: 302, ref: 4, subject: 'Colleague task', mine: false, closed: false },
+        { id: 303, ref: 5, subject: 'Finished task', mine: true, closed: true },
+      ],
+      issues: [{ id: 101, ref: 1, subject: 'Issue 1', mine: true, closed: false }],
+    };
+
+    sendJson(200, today);
+
+    return;
+  }
+
+  if (pathname === '/api/v1/activity/summary' && req.method === 'GET') {
+    const summary: ActivitySummary = {
+      view: query['view'] ?? 'week',
+      period: { label: 'Week 48', start: '2026-11-23', end: '2026-11-29', sprint_id: null },
+      prev: '2026-11-16',
+      next: null,
+      rows: [
+        {
+          user: { id: 2, name: 'Alex Developer' },
+          member: true,
+          total: 150,
+          overtime: 30,
+          by_kind: { learning: 0, research: 0, administrative: 30, meetings: 0, tasks: 120 },
+        },
+        {
+          user: { id: 3, name: 'Idle Member' },
+          member: true,
+          total: 0,
+          overtime: 0,
+          by_kind: { learning: 0, research: 0, administrative: 0, meetings: 0, tasks: 0 },
+        },
+      ],
+    };
+
+    sendJson(200, summary);
+
+    return;
+  }
+
+  if (pathname === '/api/v1/activity/item-time' && req.method === 'GET') {
+    if (query['task'] === '301') {
+      const time: ActivityItemTime = { logged: 0, mine_today: 0, can_log: true };
+      sendJson(200, time);
+
+      return;
+    }
+
+    sendJson(500, { _error_message: 'item-time unavailable' });
+
+    return;
+  }
+
+  if (pathname === '/api/v1/activity/entries' && req.method === 'POST') {
+    const created: ActivityEntry = {
+      id: 900 + activityLogged.length + 1,
+      date: '2026-11-24',
+      minutes: Number(body?.['minutes']),
+      place: body?.['place'] === 'remote' ? 'remote' : 'onsite',
+      overtime: body?.['overtime'] === true,
+      kind: body?.['task'] || body?.['issue'] ? 'tasks' : 'administrative',
+      title: String(body?.['title'] ?? ''),
+      task: body?.['task'] ? { id: Number(body['task']), ref: 3, subject: 'Task 1' } : null,
+      issue: null,
+    };
+
+    activityLogged.push(created);
+    sendJson(201, created);
+
+    return;
+  }
+
+  if (pathname === '/api/v1/activity/entries/901' && req.method === 'DELETE') {
+    res.writeHead(204);
+    res.end();
+
+    return;
+  }
+
   sendJson(404, { _error_message: `Mock endpoint not found: ${req.method ?? 'GET'} ${pathname}` });
 });
 
@@ -2721,6 +2816,121 @@ try {
 
     leakServer.close();
   }
+
+  const todayEmptyRes = await runToolCheck('activity', { op: 'today', project: '1' });
+
+  const logTaskRes = await runToolCheck('activity', { op: 'log', project: '1', minutes: 45, task: '#3' });
+
+  const logAdministrativeRes = await runToolCheck('activity', {
+    op: 'log',
+    project: '1',
+    minutes: 30,
+    kind: 'administrative',
+    title: 'Weekly planning',
+    place: 'remote',
+    overtime: true,
+  });
+
+  const requestsBeforeInvalidLogs = requests.length;
+
+  const logMeetingsNoTitleRes = await runToolCheck(
+    'activity',
+    { op: 'log', project: '1', minutes: 30, kind: 'meetings' },
+    { expectError: true },
+  );
+
+  const logTaskAndIssueRes = await runToolCheck(
+    'activity',
+    { op: 'log', project: '1', minutes: 30, task: '301', issue: '101' },
+    { expectError: true },
+  );
+
+  const logTitledTaskRes = await runToolCheck(
+    'activity',
+    { op: 'log', project: '1', minutes: 30, kind: 'tasks', title: 'Not allowed' },
+    { expectError: true },
+  );
+
+  const logLinkedMeetingRes = await runToolCheck(
+    'activity',
+    { op: 'log', project: '1', minutes: 30, kind: 'meetings', task: '301' },
+    { expectError: true },
+  );
+
+  const requestsAfterInvalidLogs = requests.length;
+  const todayLoggedRes = await runToolCheck('activity', { op: 'today', project: '1' });
+  const summaryRes = await runToolCheck('activity', { op: 'summary', project: '1' });
+  const deleteEntryRes = await runToolCheck('activity', { op: 'delete', entry: '901' });
+
+  const nudgeUpdateRes = await runToolCheck('work', { op: 'update', type: 'task', item: 301, status: 'In progress' });
+  const failedItemTimeUpdateRes = await runToolCheck('work', { op: 'update', type: 'issue', item: 104, status: 'In progress' });
+
+  await runContractAssertion('activity log on a task POSTs the full entry body with an onsite default', () => {
+    const post = requests.find((r) => r.method === 'POST' && r.path === '/api/v1/activity/entries' && r.body?.['task'] === 301);
+    assert.ok(post, 'expected POST /api/v1/activity/entries for the task');
+    assert.deepEqual(post.body, { project: 1, minutes: 45, place: 'onsite', overtime: false, kind: 'tasks', task: 301, issue: null, title: '' });
+    assert.match(resultText(logTaskRes), /45m/);
+  });
+
+  await runContractAssertion('activity log of an administrative entry sends the title and no task or issue', () => {
+    const post = requests.find((r) => r.method === 'POST' && r.path === '/api/v1/activity/entries' && r.body?.['kind'] === 'administrative');
+    assert.ok(post, 'expected POST /api/v1/activity/entries for the administrative entry');
+    assert.deepEqual(post.body, { project: 1, minutes: 30, place: 'remote', overtime: true, kind: 'administrative', task: null, issue: null, title: 'Weekly planning' });
+    assert.match(resultText(logAdministrativeRes), /Weekly planning/);
+  });
+
+  await runContractAssertion('invalid activity log combinations are rejected before any HTTP request', () => {
+    assert.equal(requestsAfterInvalidLogs, requestsBeforeInvalidLogs, 'invalid log calls must not send any request');
+    assert.match(resultText(logMeetingsNoTitleRes), /title is required/i);
+    assert.match(resultText(logTaskAndIssueRes), /exactly one of task or issue/);
+    assert.match(resultText(logTitledTaskRes), /not a title/);
+    assert.match(resultText(logLinkedMeetingRes), /not a task or issue/);
+  });
+
+  await runContractAssertion('activity delete sends DELETE to the entry path', () => {
+    const removal = requests.find((r) => r.method === 'DELETE' && r.path === '/api/v1/activity/entries/901');
+    assert.ok(removal, 'expected DELETE /api/v1/activity/entries/901');
+    assert.match(resultText(deleteEntryRes), /901/);
+  });
+
+  await runContractAssertion('activity today reports an empty day first, then totals and open assigned work', () => {
+    assert.match(resultText(todayEmptyRes).split('\n')[0] ?? '', /^Nothing logged today/);
+
+    const text = resultText(todayLoggedRes);
+    assert.match(text.split('\n')[0] ?? '', /^Logged today: 75m/);
+    assert.match(text, /#3 Task 1/);
+    assert.match(text, /#1 Issue 1/);
+    assert.ok(!text.includes('Colleague task'), 'tasks assigned to someone else must not be listed');
+    assert.ok(!text.includes('Finished task'), 'closed tasks must not be listed');
+  });
+
+  await runContractAssertion('activity summary lists logged members and then members with nothing logged', () => {
+    const text = resultText(summaryRes);
+    assert.match(text, /Alex Developer \| 150m \| overtime 30m \| administrative 30m, tasks 120m/);
+    assert.match(text, /not logged: 1\nIdle Member/);
+
+    const request = requests.find((r) => r.method === 'GET' && r.path === '/api/v1/activity/summary');
+    assert.equal(request?.query['view'], 'week');
+    assert.equal(request?.query['project'], '1');
+  });
+
+  await runContractAssertion('work update of a task status appends the time-log nudge and a failing item-time route leaves updates unchanged', () => {
+    const nudgeText = resultText(nudgeUpdateRes);
+    assert.match(nudgeText, /^Updated task:/);
+    assert.match(nudgeText, /activity op=log project=1 task=301/);
+
+    const lookup = requests.find((r) => r.method === 'GET' && r.path === '/api/v1/activity/item-time' && r.query['task'] === '301');
+    assert.ok(lookup, 'expected GET /api/v1/activity/item-time?task=301');
+
+    const failedText = resultText(failedItemTimeUpdateRes);
+    assert.match(failedText, /^Updated issue:/);
+    assert.ok(!failedText.includes('activity op=log'), 'a failed item-time request must not add a nudge');
+    assert.equal(failedItemTimeUpdateRes.isError, undefined);
+    assert.ok(
+      requests.some((r) => r.method === 'GET' && r.path === '/api/v1/activity/item-time' && r.query['issue'] === '104'),
+      'expected the failing GET /api/v1/activity/item-time?issue=104 to have been attempted',
+    );
+  });
 
   await runContractAssertion('every (tool, op) pair in allTools was exercised', () => {
     const expectedMatrix = new Set<string>();

@@ -52,6 +52,12 @@ export function isReadOnly(): boolean {
   return flag === '1' || flag === 'true' || flag === 'yes';
 }
 
+export function requestedToolNames(): string[] | null {
+  const raw = (process.env.TAIGA_TOOLS ?? '').trim();
+
+  return raw ? raw.split(',').map((name) => name.trim().toLowerCase()).filter(Boolean) : null;
+}
+
 function isErrorBodyObject(body: TaigaErrorBody | undefined): body is Exclude<TaigaErrorBody, string> {
   return body !== undefined && Object(body) === body;
 }

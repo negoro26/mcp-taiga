@@ -18,7 +18,8 @@ function createServer(): McpServer {
   const server = new McpServer(SERVER_INFO, {
     capabilities: { tools: {}, resources: {} },
     instructions: 'Read and manage Taiga. Start with projects op=list when the project is unknown, then prefer the '
-      + 'numeric IDs it returns.',
+      + 'numeric IDs it returns. After working on a task or issue, log time with activity op=log; check activity op=today '
+      + 'before finishing.',
   });
 
   server.registerResource(

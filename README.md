@@ -6,7 +6,7 @@
 [![MCP](https://img.shields.io/badge/MCP-2026--07--28-black)](https://modelcontextprotocol.io/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A TypeScript MCP server for Taiga. It gives LLM clients six tools for projects, work items, sprints, comments, attachments, and wiki pages.
+A TypeScript MCP server for Taiga. It gives LLM clients seven tools for projects, work items, sprints, comments, attachments, wiki pages, and time logging.
 
 The server uses MCP revision `2026-07-28` and native `fetch`, and speaks stdio only.
 
@@ -93,7 +93,7 @@ Run `/mcp test taiga` or `/mcp list` to verify the server. OMP configuration liv
 
 ## Tools
 
-The server exposes six tools and 30 operation pairs. Set `TAIGA_TOOLS=projects,work,sprints` to expose only a subset of tools, or `TAIGA_READONLY=1` to refuse all non-GET mutations.
+The server exposes seven tools and 34 operation pairs. Set `TAIGA_TOOLS=projects,work,sprints` to expose only a subset of tools, or `TAIGA_READONLY=1` to refuse all non-GET mutations.
 
 | Tool | Operations | Key arguments |
 | --- | --- | --- |
@@ -103,6 +103,7 @@ The server exposes six tools and 30 operation pairs. Set `TAIGA_TOOLS=projects,w
 | `comments` | `list`, `add`, `edit`, `delete` | `type`, `item`, `text`, `commentId` |
 | `attachments` | `list`, `upload`, `download`, `delete` | `type`, `item`, `attachmentId`, `filePath` or `fileContent`, `savePath` |
 | `wiki` | `list`, `get`, `create`, `update`, `delete`, `watch` | `project`, `page`, `content`, `watch` |
+| `activity` | `today`, `summary`, `log`, `delete` | `project`, `minutes`, `task` or `issue` or `kind` + `title`, `entry` (needs the pmdashboard Activity API) |
 
 ### Input conventions
 
@@ -159,20 +160,21 @@ The test suite covers the MCP stdio handshake and all tool operations against an
 ## Project layout
 
 ```text
-src/index.ts             entrypoint: reads .env, registers the six tools, speaks stdio
+src/index.ts             entrypoint: reads .env, registers the seven tools, speaks stdio
 src/api.ts               the only file that knows URLs and tokens; auth, retry, cache
 src/taiga.ts             resolves names to ids and holds every rule about Taiga
 src/format.ts            turns records into plain text responses
 src/utils.ts             success and error response shapes
 src/constants.ts         API paths, limits, and fixed messages
 src/types.ts             TypeScript shapes for Taiga's JSON
-src/tools/index.ts       the six tools, registered in order
+src/tools/index.ts       the seven tools, registered in order
 src/tools/projects.ts    projects: list, get, whoami
 src/tools/work.ts        work items: list, get, create, update, link, unlink, delete
 src/tools/sprints.ts     sprints: list, get, stats, create
 src/tools/comments.ts    comments: list, add, edit, delete
 src/tools/attachments.ts attachments: list, upload, download, delete
 src/tools/wiki.ts        wiki pages: list, get, create, update, delete, watch
+src/tools/activity.ts    activity time log: today, summary, log, delete
 test/protocolTest.ts     the MCP handshake over stdio
 test/apiContractTest.ts  every tool op against an in-process fake Taiga
 ```

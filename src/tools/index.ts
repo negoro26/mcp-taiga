@@ -1,20 +1,21 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { RegisteredTool } from '../types.js';
+import { requestedToolNames } from '../api.js';
 import { tools as projects } from './projects.js';
 import { tools as work } from './work.js';
 import { tools as sprints } from './sprints.js';
 import { tools as comments } from './comments.js';
 import { tools as attachments } from './attachments.js';
 import { tools as wiki } from './wiki.js';
+import { tools as activity } from './activity.js';
 
-export const allTools: RegisteredTool[] = [...projects, ...work, ...sprints, ...comments, ...attachments, ...wiki];
+export const allTools: RegisteredTool[] = [...projects, ...work, ...sprints, ...comments, ...attachments, ...wiki, ...activity];
 
 export function enabledTools(): RegisteredTool[] {
-  const raw = (process.env.TAIGA_TOOLS ?? '').trim();
+  const requested = requestedToolNames();
 
-  if (!raw) return allTools;
+  if (!requested) return allTools;
   const valid = new Set(allTools.map((tool) => tool.name));
-  const requested = raw.split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
 
   for (const name of requested) {
     if (!valid.has(name)) {

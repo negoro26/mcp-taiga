@@ -62,8 +62,8 @@ check('server declares tool and resource capabilities', () => {
 
 const { tools } = await client.listTools();
 
-check('tools/list returns exactly 6 tools', () => {
-  assert.equal(tools.length, 6, `expected exactly 6 tools, got ${tools.length}`);
+check('tools/list returns exactly 7 tools', () => {
+  assert.equal(tools.length, 7, `expected exactly 7 tools, got ${tools.length}`);
 });
 
 check('every tool exposes a JSON Schema with required op and all properties described', () => {

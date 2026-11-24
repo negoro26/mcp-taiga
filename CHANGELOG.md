@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file. The format is b
 
 ### Added
 
+- An `activity` tool for the pmdashboard Activity page: `today`, `summary`, `log`, and `delete` time entries. `work.update` on a task or issue status now reminds the model to log time when none is logged yet, and the server instructions tell it to log after working and check `activity op=today` before finishing.
 - Ownership checks on the writes that change or remove existing work. `work.update`, `link`, and `unlink` allow the creator or the assignee; `work.delete`, `wiki.update`, and `wiki.delete` allow only the creator; `attachments.delete` allows only the file's uploader; `comments.edit` and `comments.delete` allow only the comment's author. Records Taiga returns without an owner are refused instead of written. `comments.add` and `attachments.upload` are deliberately left open, since commenting on and attaching files to a colleague's item is the point of a shared board.
 - An `anti-slop/no-comments` lint rule that fails the build on any comment in `src` or `test`.
 
