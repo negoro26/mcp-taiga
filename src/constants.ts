@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs';
 
-export const SERVER_INFO = {
-  name: 'mcp-taiga',
-  version: '1.0.0',
-};
+const manifest: { name: string; version: string } = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+);
+
+export const SERVER_INFO = { name: manifest.name, version: manifest.version };
 
 export const RESOURCE_URIS = {
   PROJECTS: 'taiga://projects',
