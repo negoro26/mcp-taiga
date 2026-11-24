@@ -69,7 +69,7 @@ It assumes:
 It leaves out:
 - `link`, `unlink`, `delete`, the wiki and attachment guards, and `comments` (which skips the guard by design). `wiki update` passes `ownedAs` to `patchItem` too, but only the work flow is modeled.
 - Retries on 401 and 429. Taiga rejected those requests before applying them.
-- The `activity/item-time` GET (`timeLogNudge`) that runs after every write. It writes nothing.
+- The `activity/item-time` GET (`timeLogNudge`) that runs after a task or issue status change. It writes nothing.
 
 A late refusal (`refusedLate`) at the add-on re-read can follow a PATCH that already landed while you held the task. The tool then reports an error even though the PATCH fields were saved. No rule covers that partial write.
 
