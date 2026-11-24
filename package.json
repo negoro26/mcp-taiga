@@ -23,6 +23,7 @@
     "test": "npm run build && node dist/test/protocolTest.js && node dist/test/apiContractTest.js",
     "test:protocol": "npm run build && node dist/test/protocolTest.js",
     "test:contract": "npm run build && node dist/test/apiContractTest.js",
+    "verify:ownership": "sh verify/ownership/check.sh",
     "prepublishOnly": "npm run check && npm run lint && npm test"
   },
   "dependencies": {
