@@ -9,6 +9,8 @@ const SCENARIOS = [
   { rule: 'OwnedAtRetryPatch', args: { subject: 'New' }, reassignAfterGet: 1, expect: 'refused' },
   { rule: 'OwnedAtAddonWrite', args: { points: 5 }, reassignAfterGet: 1, expect: 'refused' },
   { rule: 'OwnedAtAddonWrite', args: { points: 5 }, reassignAfterGet: 2, expect: 'reproduced' },
+  { rule: 'OwnedAtRetryPatch', args: { subject: 'New', points: 5 }, reassignAfterGet: 1, expect: 'refused' },
+  { rule: 'OwnedAtAddonWrite', args: { subject: 'New', points: 5 }, reassignAfterGet: 2, expect: 'reproduced' },
 ];
 
 let task;

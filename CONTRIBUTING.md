@@ -36,7 +36,7 @@ Requirements: Node.js >= 24.
 ```bash
 npm ci
 npm run build     # compile src/ and test/ into dist/
-npm test          # protocol + contract suites (offline)
+npm test          # protocol + contract suites + ownership replay (offline)
 ```
 
 Copy `.env.example` to `.env` for local runs — the server loads it automatically from a local checkout. See the README for architecture notes, the tool reference, and the reliability model before proposing changes.

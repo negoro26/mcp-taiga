@@ -645,20 +645,19 @@ const handler = async ({
       ? await resolveTaxonomyId('priority', projectId, priority)
       : undefined;
 
-    let base = existing;
+    const updated = Object.keys(payload).length > 0
+      ? await patchItem<TaigaWorkItem>(internalKey, existing, payload, { ownedAs: label })
+      : existing;
 
     if (hasTaskAddonWrite) {
-      base = await resolveItem(internalKey, existing.id);
-      await assertWritable(base, label, 'update');
+      const current = await resolveItem(internalKey, existing.id);
 
-      if (points !== undefined) await post(API_ENDPOINTS.TASK_POINTS, { task: base.id, value: points });
+      if (current.version === undefined || current.version !== updated.version) await assertWritable(current, label, 'update');
 
-      if (prioId !== undefined) await post(API_ENDPOINTS.TASK_PRIORITY, { task: base.id, priority: prioId });
+      if (points !== undefined) await post(API_ENDPOINTS.TASK_POINTS, { task: current.id, value: points });
+
+      if (prioId !== undefined) await post(API_ENDPOINTS.TASK_PRIORITY, { task: current.id, priority: prioId });
     }
-
-    const updated = Object.keys(payload).length > 0
-      ? await patchItem<TaigaWorkItem>(internalKey, base, payload, { ownedAs: label })
-      : base;
 
     return createSuccessResponse(`Updated ${meta.label.toLowerCase()}:\n${workLine(updated)}`);
   }

@@ -32,19 +32,19 @@ ResolveItem ==
 
 AssertWritable ==
   /\ pc = "check"
-  /\ pc' = IF Mine(seen) THEN (IF wantsAddon THEN "reread" ELSE "patch") ELSE "refused"
+  /\ pc' = IF Mine(seen) THEN (IF wantsPatch THEN "patch" ELSE "reread") ELSE "refused"
   /\ UNCHANGED <<item, seen, retryVersion, wantsPatch, wantsAddon, humanEdits, landed>>
 
 RereadForAddon ==
   /\ pc = "reread"
   /\ seen' = item
-  /\ pc' = IF Mine(item) THEN "addon" ELSE "refusedLate"
+  /\ pc' = IF item.version = seen.version \/ Mine(item) THEN "addon" ELSE "refusedLate"
   /\ UNCHANGED <<item, retryVersion, wantsPatch, wantsAddon, humanEdits, landed>>
 
 PostTaskAddon ==
   /\ pc = "addon"
   /\ Land("addon")
-  /\ pc' = IF wantsPatch THEN "patch" ELSE "done"
+  /\ pc' = "done"
   /\ UNCHANGED <<item, seen, retryVersion, wantsPatch, wantsAddon, humanEdits>>
 
 PatchWithSeenVersion ==
@@ -52,10 +52,11 @@ PatchWithSeenVersion ==
   /\ IF seen.version = item.version
        THEN /\ Land("patch")
             /\ item' = [item EXCEPT !.version = @ + 1]
-            /\ pc' = "done"
+            /\ seen' = item'
+            /\ pc' = IF wantsAddon THEN "reread" ELSE "done"
        ELSE /\ pc' = "refetch"
-            /\ UNCHANGED <<item, landed>>
-  /\ UNCHANGED <<seen, retryVersion, wantsPatch, wantsAddon, humanEdits>>
+            /\ UNCHANGED <<item, seen, landed>>
+  /\ UNCHANGED <<retryVersion, wantsPatch, wantsAddon, humanEdits>>
 
 RefetchAndRecheck ==
   /\ pc = "refetch"
@@ -69,10 +70,11 @@ PatchWithFreshVersion ==
   /\ IF retryVersion = item.version
        THEN /\ Land("retry")
             /\ item' = [item EXCEPT !.version = @ + 1]
-            /\ pc' = "done"
+            /\ seen' = item'
+            /\ pc' = IF wantsAddon THEN "reread" ELSE "done"
        ELSE /\ pc' = "failed"
-            /\ UNCHANGED <<item, landed>>
-  /\ UNCHANGED <<seen, retryVersion, wantsPatch, wantsAddon, humanEdits>>
+            /\ UNCHANGED <<item, seen, landed>>
+  /\ UNCHANGED <<retryVersion, wantsPatch, wantsAddon, humanEdits>>
 
 HumanReassigns(u) ==
   /\ humanEdits < MaxHumanEdits
