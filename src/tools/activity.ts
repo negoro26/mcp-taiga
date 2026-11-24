@@ -52,7 +52,7 @@ const description = `Log and audit working time.
 
 Log time after task or issue work. Run today before finishing.`;
 
-const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+const annotations: ToolAnnotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
 
 function draftTarget({ kind, task, issue, title }: TargetArgs): TargetDraft {
   const resolvedKind = kind ?? (task !== undefined || issue !== undefined ? 'tasks' : undefined);
