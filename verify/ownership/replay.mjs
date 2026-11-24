@@ -5,23 +5,27 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 const ME = 1;
 const COLLEAGUE = 2;
 
-const SCENARIOS = {
-  retry: { rule: 'OwnedAtRetryPatch', args: { subject: 'New' } },
-  addon: { rule: 'OwnedAtAddonWrite', args: { points: 5 } },
-};
+const SCENARIOS = [
+  { rule: 'OwnedAtRetryPatch', args: { subject: 'New' }, reassignAfterGet: 1, expect: 'refused' },
+  { rule: 'OwnedAtAddonWrite', args: { points: 5 }, reassignAfterGet: 1, expect: 'refused' },
+  { rule: 'OwnedAtAddonWrite', args: { points: 5 }, reassignAfterGet: 2, expect: 'reproduced' },
+  { rule: 'OwnedAtRetryPatch', args: { subject: 'New', points: 5 }, reassignAfterGet: 1, expect: 'refused' },
+  { rule: 'OwnedAtAddonWrite', args: { subject: 'New', points: 5 }, reassignAfterGet: 2, expect: 'reproduced' },
+];
 
 let task;
 let events;
+let gets;
+let reassignAfterGet;
 
-function reset() {
+function reset(scenario) {
   task = { id: 301, ref: 7, project: 5, subject: 'Old', owner: COLLEAGUE, assigned_to: ME, version: 1 };
   events = [];
+  gets = 0;
+  reassignAfterGet = scenario.reassignAfterGet;
 }
 
-function colleagueReassigns() {
-  task = { ...task, assigned_to: COLLEAGUE, version: task.version + 1 };
-  events.push('colleague reassigns');
-}
+const holder = () => (task.assigned_to === ME ? 'me' : 'colleague');
 
 const server = http.createServer(async (req, res) => {
   let body = '';
@@ -39,10 +43,13 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/v1/tasks/301' && req.method === 'GET') {
     const snapshot = task;
-    const first = !events.includes('agent reads');
+    gets += 1;
     events.push('agent reads');
 
-    if (first) colleagueReassigns();
+    if (gets === reassignAfterGet) {
+      task = { ...task, assigned_to: COLLEAGUE, version: task.version + 1 };
+      events.push('colleague reassigns');
+    }
 
     return send(200, snapshot);
   }
@@ -57,13 +64,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     task = { ...task, ...patch, version: task.version + 1 };
-    events.push(`PATCH saved, assigned_to=${task.assigned_to === ME ? 'me' : 'colleague'}`);
+    events.push(`PATCH saved, assigned_to=${holder()}`);
 
     return send(200, task);
   }
 
   if (pathname === '/api/v1/task-points' && req.method === 'POST') {
-    events.push(`task-points saved, assigned_to=${task.assigned_to === ME ? 'me' : 'colleague'}`);
+    events.push(`task-points saved, assigned_to=${holder()}`);
 
     return send(200, {});
   }
@@ -87,17 +94,19 @@ await client.connect(new StdioClientTransport({
   stderr: 'pipe',
 }));
 
-let reproduced = 0;
+let mismatches = 0;
 
-for (const [name, { rule, args }] of Object.entries(SCENARIOS)) {
-  reset();
-  const result = await client.callTool({ name: 'work', arguments: { op: 'update', type: 'task', item: '301', ...args } });
-  const hit = !result.isError && events.some((e) => e.endsWith('assigned_to=colleague'));
+for (const scenario of SCENARIOS) {
+  reset(scenario);
+  const result = await client.callTool({ name: 'work', arguments: { op: 'update', type: 'task', item: '301', ...scenario.args } });
+  const wroteForeign = events.some((e) => e.endsWith('assigned_to=colleague'));
+  const outcome = wroteForeign ? 'reproduced' : result.isError ? 'refused' : 'clean';
+  const ok = outcome === scenario.expect;
 
-  if (hit) reproduced += 1;
-  console.log(`${hit ? 'reproduced' : 'not reproduced'}  ${rule} (${name}): ${events.join(' -> ')}`);
+  if (!ok) mismatches += 1;
+  console.log(`${ok ? 'ok' : 'UNEXPECTED'}  ${scenario.rule}, colleague after GET ${scenario.reassignAfterGet}: ${outcome} (expected ${scenario.expect}) | ${events.join(' -> ')}`);
 }
 
 await client.close();
 server.close();
-process.exit(reproduced === Object.keys(SCENARIOS).length ? 0 : 1);
+process.exit(mismatches ? 1 : 0);

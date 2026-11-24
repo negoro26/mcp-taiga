@@ -115,8 +115,9 @@ const handler = async ({ op, project, page, content, watch }: Args): Promise<Cal
         }
 
         const wikiPage = await resolveWikiPage(page, project);
-        await assertWritable(wikiPage, `wiki page "${wikiPage.slug ?? wikiPage.id}"`, 'update');
-        const result = await patchItem<TaigaWikiPage>('wiki', wikiPage, { content });
+        const label = `wiki page "${wikiPage.slug ?? wikiPage.id}"`;
+        await assertWritable(wikiPage, label, 'update');
+        const result = await patchItem<TaigaWikiPage>('wiki', wikiPage, { content }, { ownedAs: label });
 
         const text = details([
           ['ID', result.id],
