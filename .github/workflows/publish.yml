@@ -2,16 +2,36 @@ name: Publish Package
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
+  release:
+    name: Release PR and tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+
   test:
     name: Verify Build and Tests
+    needs: release
+    if: needs.release.outputs.created == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
 
       - name: Set up Node.js runtime
         uses: actions/setup-node@v4
@@ -33,7 +53,7 @@ jobs:
 
   publish:
     name: Publish to npm registry
-    needs: test
+    needs: [release, test]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -41,6 +61,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
 
       - name: Set up Node.js runtime
         uses: actions/setup-node@v4
