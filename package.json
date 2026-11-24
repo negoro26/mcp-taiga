@@ -1,7 +1,7 @@
 {
   "name": "mcp-taiga",
   "version": "1.0.0",
-  "description": "Taiga MCP server in TypeScript: six op-dispatching tools over MCP revision 2026-07-28",
+  "description": "Taiga MCP server in TypeScript: seven op-dispatching tools over MCP revision 2026-07-28",
   "type": "module",
   "bin": {
     "mcp-taiga": "dist/src/index.js"

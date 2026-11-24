@@ -246,6 +246,69 @@ export interface ApiError extends Error {
   detail?: TaigaErrorBody;
 }
 
+export type ActivityKind = 'learning' | 'research' | 'administrative' | 'meetings' | 'tasks';
+
+export type ActivityTitledKind = Exclude<ActivityKind, 'tasks'>;
+
+export type ActivityPlace = 'remote' | 'onsite';
+
+export interface ActivityLink {
+  id: number;
+  ref: number;
+  subject: string;
+}
+
+export interface ActivityEntry {
+  id: number;
+  date: string;
+  minutes: number;
+  place: ActivityPlace;
+  overtime: boolean;
+  kind: ActivityKind;
+  title: string;
+  task: ActivityLink | null;
+  issue: ActivityLink | null;
+}
+
+export interface ActivityOpenItem extends ActivityLink {
+  mine: boolean;
+  closed: boolean;
+}
+
+export interface ActivityToday {
+  today: string;
+  can_log: boolean;
+  mine: ActivityEntry[];
+  tasks: ActivityOpenItem[];
+  issues: ActivityOpenItem[];
+}
+
+export interface ActivitySummaryRow {
+  user: { id: number; name: string };
+  member: boolean;
+  total: number;
+  overtime: number;
+  by_kind: Record<ActivityKind, number>;
+}
+
+export interface ActivitySummary {
+  view: string;
+  period: { label: string; start: string; end: string; sprint_id: number | null };
+  prev: string | number | null;
+  next: string | number | null;
+  rows: ActivitySummaryRow[];
+}
+
+export interface ActivityItemTime {
+  logged: number;
+  mine_today: number;
+  can_log: boolean;
+}
+
+export type ActivityTarget =
+  | { kind: 'tasks'; item: { type: 'task' | 'issue'; id: number } }
+  | { kind: ActivityTitledKind; title: string };
+
 export interface RegisteredTool {
   name: string;
   title: string;

@@ -33,6 +33,10 @@ export const API_ENDPOINTS = {
   TASK_PRIORITY: '/task-priority',
   SPRINT_REVIEW: '/sprint-review',
   SPRINT_CLOSE: '/sprint-close',
+  ACTIVITY_TODAY: '/activity/today',
+  ACTIVITY_SUMMARY: '/activity/summary',
+  ACTIVITY_ITEM_TIME: '/activity/item-time',
+  ACTIVITY_ENTRIES: '/activity/entries',
 };
 
 export const ERROR_MESSAGES = {

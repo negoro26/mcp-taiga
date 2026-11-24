@@ -1,5 +1,8 @@
 
 import type {
+  ActivityEntry,
+  ActivityLink,
+  ActivitySummaryRow,
   PointsValue,
   TaigaAttachment,
   TaigaHistoryEntry,
@@ -88,6 +91,35 @@ export function sprintLine(sprint: TaigaMilestone): string {
     sprint.user_stories ? `${sprint.user_stories.length} stories` : null,
     done,
   );
+}
+
+export function activityLine(entry: ActivityEntry): string {
+  const link = entry.task ?? entry.issue;
+  const target = link ? `${entry.task ? 'task' : 'issue'} #${link.ref} ${oneLine(link.subject)}` : oneLine(entry.title);
+
+  return row(
+    `${entry.id}`,
+    day(entry.date),
+    `${entry.minutes}m`,
+    entry.place,
+    entry.overtime ? 'overtime' : null,
+    entry.kind,
+    target,
+  );
+}
+
+export function activityItemLine(item: ActivityLink): string {
+  return row(`#${item.ref} ${oneLine(item.subject)}`, `id=${item.id}`);
+}
+
+export function activityMemberLine(member: ActivitySummaryRow): string {
+  const parts: string[] = [];
+
+  for (const [kind, minutes] of Object.entries(member.by_kind)) {
+    if (minutes > 0) parts.push(`${kind} ${minutes}m`);
+  }
+
+  return row(oneLine(member.user.name), `${member.total}m`, member.overtime > 0 ? `overtime ${member.overtime}m` : null, parts.join(', '));
 }
 
 export function wikiLine(page: TaigaWikiPage, namesById?: Map<number, string>): string {

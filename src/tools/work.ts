@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { del, get, post } from '../api.js';
+import { del, get, post, requestedToolNames } from '../api.js';
 import { API_ENDPOINTS, ERROR_MESSAGES, MAX_BATCH_SIZE, MAX_LIST_ROWS } from '../constants.js';
 import { assignees, day, details, listing, workLine } from '../format.js';
 import {
@@ -30,10 +30,25 @@ import type {
   TaigaWorkItem,
   TaxonomyKind,
   ToolAnnotations,
+  ActivityItemTime,
 } from '../types.js';
 import { createSuccessResponse, guard } from '../utils.js';
 
 type WorkType = 'issue' | 'story' | 'task' | 'epic';
+
+async function timeLogNudge(type: 'task' | 'issue', id: number, projectId: number): Promise<string> {
+  if (requestedToolNames()?.includes('activity') === false) return '';
+
+  try {
+    const time = await get<ActivityItemTime>(API_ENDPOINTS.ACTIVITY_ITEM_TIME, { [type]: id });
+
+    return time.mine_today === 0 && time.can_log
+      ? `\nNo time logged today on this ${type}: log it with activity op=log project=${projectId} ${type}=${id} minutes=<n>.`
+      : '';
+  } catch {
+    return '';
+  }
+}
 
 const TYPES = {
   issue: {
@@ -659,7 +674,11 @@ const handler = async ({
       if (prioId !== undefined) await post(API_ENDPOINTS.TASK_PRIORITY, { task: current.id, priority: prioId });
     }
 
-    return createSuccessResponse(`Updated ${meta.label.toLowerCase()}:\n${workLine(updated)}`);
+    const nudge = (type === 'task' || type === 'issue') && payload.status !== undefined && payload.status !== existing.status
+      ? await timeLogNudge(type, existing.id, projectId)
+      : '';
+
+    return createSuccessResponse(`Updated ${meta.label.toLowerCase()}:\n${workLine(updated)}${nudge}`);
   }
 
   if (op === 'link') {
