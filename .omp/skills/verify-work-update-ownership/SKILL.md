@@ -69,6 +69,7 @@ It assumes:
 It leaves out:
 - `link`, `unlink`, `delete`, the wiki and attachment guards, and `comments` (which skips the guard by design). `wiki update` passes `ownedAs` to `patchItem` too, but only the work flow is modeled.
 - Retries on 401 and 429. Taiga rejected those requests before applying them.
+- The `activity/item-time` GET (`timeLogNudge`) that runs after every write. It writes nothing.
 
 A late refusal (`refusedLate`) at the add-on re-read can follow a PATCH that already landed while you held the task. The tool then reports an error even though the PATCH fields were saved. No rule covers that partial write.
 
@@ -84,4 +85,4 @@ Replay the shortest path against the real code before you report it. Add a scena
 
 `CHANGED` means re-read that region against the table above. If the behavior changed, edit the matching action, then rerun. Move the sync commit forward only after the model matches the code at the new commit, and the rules match their expected results there. When a new step joins the flow, add its region to `REGIONS` in `coverage.mjs` and to the table above.
 
-Sync commit: `031a894`
+Sync commit: `d5c6d14`
