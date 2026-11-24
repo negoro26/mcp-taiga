@@ -20,7 +20,7 @@
     "check": "tsc --noEmit",
     "lint": "oxlint src test",
     "start": "node dist/src/index.js",
-    "test": "npm run build && node dist/test/protocolTest.js && node dist/test/apiContractTest.js",
+    "test": "npm run build && node dist/test/protocolTest.js && node dist/test/apiContractTest.js && node verify/ownership/replay.mjs",
     "test:protocol": "npm run build && node dist/test/protocolTest.js",
     "test:contract": "npm run build && node dist/test/apiContractTest.js",
     "verify:ownership": "sh verify/ownership/check.sh",

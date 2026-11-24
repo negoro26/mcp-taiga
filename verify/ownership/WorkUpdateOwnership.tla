@@ -13,8 +13,6 @@ Mine(i) == i.owner = Me \/ i.assignee = Me
 
 Land(kind) == landed' = landed \cup {[kind |-> kind, mine |-> Mine(item)]}
 
-AfterPatch == IF wantsAddon THEN "addon" ELSE "done"
-
 Init ==
   /\ item \in [owner : Users, assignee : Users, version : {1}]
   /\ seen = item
@@ -34,40 +32,47 @@ ResolveItem ==
 
 AssertWritable ==
   /\ pc = "check"
-  /\ pc' = IF Mine(seen) THEN (IF wantsPatch THEN "patch" ELSE "addon") ELSE "refused"
+  /\ pc' = IF Mine(seen) THEN (IF wantsAddon THEN "reread" ELSE "patch") ELSE "refused"
   /\ UNCHANGED <<item, seen, retryVersion, wantsPatch, wantsAddon, humanEdits, landed>>
+
+RereadForAddon ==
+  /\ pc = "reread"
+  /\ seen' = item
+  /\ pc' = IF Mine(item) THEN "addon" ELSE "refusedLate"
+  /\ UNCHANGED <<item, retryVersion, wantsPatch, wantsAddon, humanEdits, landed>>
+
+PostTaskAddon ==
+  /\ pc = "addon"
+  /\ Land("addon")
+  /\ pc' = IF wantsPatch THEN "patch" ELSE "done"
+  /\ UNCHANGED <<item, seen, retryVersion, wantsPatch, wantsAddon, humanEdits>>
 
 PatchWithSeenVersion ==
   /\ pc = "patch"
   /\ IF seen.version = item.version
        THEN /\ Land("patch")
             /\ item' = [item EXCEPT !.version = @ + 1]
-            /\ pc' = AfterPatch
+            /\ pc' = "done"
        ELSE /\ pc' = "refetch"
             /\ UNCHANGED <<item, landed>>
   /\ UNCHANGED <<seen, retryVersion, wantsPatch, wantsAddon, humanEdits>>
 
-RefetchVersion ==
+RefetchAndRecheck ==
   /\ pc = "refetch"
+  /\ seen' = item
   /\ retryVersion' = item.version
-  /\ pc' = "repatch"
-  /\ UNCHANGED <<item, seen, wantsPatch, wantsAddon, humanEdits, landed>>
+  /\ pc' = IF Mine(item) THEN "repatch" ELSE "refusedLate"
+  /\ UNCHANGED <<item, wantsPatch, wantsAddon, humanEdits, landed>>
 
 PatchWithFreshVersion ==
   /\ pc = "repatch"
   /\ IF retryVersion = item.version
        THEN /\ Land("retry")
             /\ item' = [item EXCEPT !.version = @ + 1]
-            /\ pc' = AfterPatch
+            /\ pc' = "done"
        ELSE /\ pc' = "failed"
             /\ UNCHANGED <<item, landed>>
   /\ UNCHANGED <<seen, retryVersion, wantsPatch, wantsAddon, humanEdits>>
-
-PostTaskAddon ==
-  /\ pc = "addon"
-  /\ Land("addon")
-  /\ pc' = "done"
-  /\ UNCHANGED <<item, seen, retryVersion, wantsPatch, wantsAddon, humanEdits>>
 
 HumanReassigns(u) ==
   /\ humanEdits < MaxHumanEdits
@@ -83,16 +88,17 @@ HumanEditsOtherField ==
   /\ UNCHANGED <<pc, seen, retryVersion, wantsPatch, wantsAddon, landed>>
 
 Finished ==
-  /\ pc \in {"done", "refused", "failed"}
+  /\ pc \in {"done", "refused", "refusedLate", "failed"}
   /\ UNCHANGED vars
 
 Next ==
   \/ ResolveItem
   \/ AssertWritable
-  \/ PatchWithSeenVersion
-  \/ RefetchVersion
-  \/ PatchWithFreshVersion
+  \/ RereadForAddon
   \/ PostTaskAddon
+  \/ PatchWithSeenVersion
+  \/ RefetchAndRecheck
+  \/ PatchWithFreshVersion
   \/ \E u \in Users : HumanReassigns(u)
   \/ HumanEditsOtherField
   \/ Finished

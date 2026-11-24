@@ -15,8 +15,8 @@ fi
 node "$dir/coverage.mjs"
 coverage=$?
 
-known="OwnedAtRetryPatch OwnedAtAddonWrite"
-holds="OwnedAtFirstPatch NoWriteAfterRefusal"
+known="OwnedAtAddonWrite"
+holds="OwnedAtFirstPatch OwnedAtRetryPatch NoWriteAfterRefusal"
 tmp=$(mktemp -d)
 status=0
 

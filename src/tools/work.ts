@@ -614,7 +614,8 @@ const handler = async ({
   if (op === 'update') {
     if (!item) throw new Error('Item identifier is required for update operation.');
     const existing = await resolveItem(internalKey, item, project);
-    await assertWritable(existing, `${meta.label.toLowerCase()} #${existing.ref ?? existing.id}`, 'update');
+    const label = `${meta.label.toLowerCase()} #${existing.ref ?? existing.id}`;
+    await assertWritable(existing, label, 'update');
     const projectId = existing.project;
 
     if (projectId === undefined) throw new Error('Work item has no project ID.');
@@ -644,19 +645,20 @@ const handler = async ({
       ? await resolveTaxonomyId('priority', projectId, priority)
       : undefined;
 
-    const updated = Object.keys(payload).length > 0
-      ? await patchItem<TaigaWorkItem>(internalKey, existing, payload)
-      : existing;
+    let base = existing;
 
-    if (type === 'task') {
-      if (points !== undefined) {
-        await post(API_ENDPOINTS.TASK_POINTS, { task: existing.id, value: points });
-      }
+    if (hasTaskAddonWrite) {
+      base = await resolveItem(internalKey, existing.id);
+      await assertWritable(base, label, 'update');
 
-      if (prioId !== undefined) {
-        await post(API_ENDPOINTS.TASK_PRIORITY, { task: existing.id, priority: prioId });
-      }
+      if (points !== undefined) await post(API_ENDPOINTS.TASK_POINTS, { task: base.id, value: points });
+
+      if (prioId !== undefined) await post(API_ENDPOINTS.TASK_PRIORITY, { task: base.id, priority: prioId });
     }
+
+    const updated = Object.keys(payload).length > 0
+      ? await patchItem<TaigaWorkItem>(internalKey, base, payload, { ownedAs: label })
+      : base;
 
     return createSuccessResponse(`Updated ${meta.label.toLowerCase()}:\n${workLine(updated)}`);
   }

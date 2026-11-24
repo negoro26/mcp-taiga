@@ -210,6 +210,7 @@ export async function patchItem<T>(
   type: ItemTypeKey,
   target: number | string | { id: number; version?: number },
   payload: JsonBody,
+  { ownedAs }: { ownedAs?: string } = {},
 ): Promise<T> {
   const { path } = itemType(type);
   const known = target instanceof Object ? target : null;
@@ -223,6 +224,8 @@ export async function patchItem<T>(
 
     if (apiErr.status === 400 && JSON.stringify(apiErr.detail ?? '').includes('version')) {
       const fresh = await get<TaigaWorkItem>(`${path}/${id}`);
+
+      if (ownedAs !== undefined) await assertWritable(fresh, ownedAs, 'update');
 
       return patch<T>(`${path}/${id}`, { ...payload, version: fresh.version });
     }
