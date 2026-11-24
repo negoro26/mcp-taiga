@@ -10,11 +10,9 @@
 ### Features
 
 * **activity:** log and audit pmdashboard time ([d5c6d14](https://github.com/negoro26/mcp-taiga/commit/d5c6d1400285f8fb823200c0ee3774bbf93cf5d3))
-* modernize MCP server for v2 ([01ba5d1](https://github.com/negoro26/mcp-taiga/commit/01ba5d1e767a2d121e37f39692ac97c0768c1129))
 * modernize MCP server for v2 ([61c7240](https://github.com/negoro26/mcp-taiga/commit/61c72400ca33414b7e8027fbaac41c60afe27f3c))
-* ownership guard, sprint defaults, and a simpler stdio-only server ([633a048](https://github.com/negoro26/mcp-taiga/commit/633a0484707d67ad76f3f30a78b5d00ef76ad612))
 * ownership guard, sprint defaults, and a simpler stdio-only server ([028e00b](https://github.com/negoro26/mcp-taiga/commit/028e00b5ef6b57972ee053590609b3e699d41427))
-* sync upstream anti-slop, drop test/doc slop, and add taiga-selfhost support ([815ca1b](https://github.com/negoro26/mcp-taiga/commit/815ca1bf5df1fa70e935037b6e12175fe67816b1))
+* sync upstream anti-slop, drop test and doc files, add pmdashboard sprint and task endpoints ([815ca1b](https://github.com/negoro26/mcp-taiga/commit/815ca1bf5df1fa70e935037b6e12175fe67816b1))
 
 
 ### Bug Fixes
