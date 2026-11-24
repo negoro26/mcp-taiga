@@ -21,20 +21,23 @@ This needs Java 11 or later, curl, and node. The first run downloads TLC 1.7.4 (
 | Rule | Expected | Meaning |
 | --- | --- | --- |
 | `OwnedAtFirstPatch` | holds | The first PATCH, sent with the checked version, lands only on your item. |
-| `NoWriteAfterRefusal` | holds | Nothing lands after `assertWritable` refuses. |
-| `OwnedAtRetryPatch` | violated, known finding 1 | The version-conflict retry can land on a colleague's item. |
-| `OwnedAtAddonWrite` | violated, known finding 2 | A task `points` or `priority` write can land on a colleague's item. |
+| `OwnedAtRetryPatch` | holds | The version-conflict retry re-checks ownership, so it lands only on your item. |
+| `NoWriteAfterRefusal` | holds | Nothing lands after the first `assertWritable` refuses. |
+| `OwnedAtAddonWrite` | violated, known finding | A task `points` or `priority` write can still land on a colleague's item. |
 
 Read every TLC result with `/skill:statechart`. Give it a scratch copy of the spec, and a config that lists all four rules as `INVARIANT`. It checks them one at a time, and tells each violation as its shortest path in plain words. If that skill is not available to you, read the trace that `check.sh` prints.
 
-## Known findings
+## Known finding
 
-Both reproduce on the real server. `npm run build && node verify/ownership/replay.mjs` replays them through a fake Taiga on 127.0.0.1. It exits 0 while both still reproduce.
+**Task points and priority.** Before these POSTs, the update op re-reads the task and re-checks ownership. A colleague can still reassign the task in the gap between that read and the POST. The POSTs carry no version, so Taiga saves them. The gap is one request wide, and the client cannot close it. Only pmdashboard can, by taking a version or checking ownership itself.
 
-1. **Retry.** You pass the ownership check. A colleague reassigns the item. Taiga rejects the PATCH because the version is stale. `patchItem` re-reads only the version (`src/taiga.ts`, the `status === 400` branch) and PATCHes again without re-checking ownership. Taiga saves the edit. To fix it, re-run `assertWritable` on the refetched item before the second PATCH. A model with that fix passes `OwnedAtRetryPatch`.
-2. **Task points and priority.** You pass the ownership check. A colleague reassigns the task. `POST /task-points` or `POST /task-priority` carries no version, so Taiga saves it. The client cannot close this window. It needs a version or an ownership check on the server.
+`npm test` ends with `node verify/ownership/replay.mjs`. It drives the built server against a fake Taiga on 127.0.0.1. Each scenario says when the colleague reassigns (after which GET of the task) and the expected outcome:
+- `refused`: the guard caught it.
+- `reproduced`: the known finding still happens.
 
-When a fix lands, move that rule from `known` to `holds` in `verify/ownership/check.sh`, drop its scenario from `replay.mjs`, and delete its entry here. Never move a rule into `known` to make a run pass. A new violation is a bug report for the user, not a change to the model.
+It exits 1 on any other outcome.
+
+If pmdashboard closes the gap, move `OwnedAtAddonWrite` from `known` to `holds` in `verify/ownership/check.sh`, change its `reproduced` scenario in `replay.mjs` to `refused`, and delete this section. Never move a rule into `known`, and never flip a scenario to `reproduced`, to make a run pass. A new violation is a bug report for the user, not a change to the model.
 
 ## Model to code
 
@@ -44,10 +47,11 @@ The spec is `verify/ownership/WorkUpdateOwnership.tla`. Each action is one HTTP 
 | --- | --- |
 | `ResolveItem` | `resolveItem` in `src/taiga.ts`, called at the start of `if (op === 'update')` in `src/tools/work.ts` |
 | `AssertWritable` | `assertWritable` in `src/taiga.ts` (creator, or `assigned_to` / `assigned_users`) |
-| `PatchWithSeenVersion` | `patchItem` in `src/taiga.ts`, first PATCH with `known.version` |
-| `RefetchVersion` | `patchItem`, GET in the `status === 400` branch |
+| `RereadForAddon` | `resolveItem(internalKey, existing.id)` then `assertWritable` in the `hasTaskAddonWrite` branch of the update op; refusing ends in `refusedLate` |
+| `PostTaskAddon` | `post(API_ENDPOINTS.TASK_POINTS / TASK_PRIORITY)`, before the PATCH |
+| `PatchWithSeenVersion` | `patchItem` in `src/taiga.ts`, first PATCH with the version of the latest read (`base`) |
+| `RefetchAndRecheck` | `patchItem`, GET in the `status === 400` branch, then `assertWritable` when the caller passes `ownedAs` |
 | `PatchWithFreshVersion` | `patchItem`, second PATCH with `fresh.version` |
-| `PostTaskAddon` | `post(API_ENDPOINTS.TASK_POINTS / TASK_PRIORITY)` after the PATCH in the update op |
 | `HumanReassigns`, `HumanEditsOtherField` | a colleague in the Taiga UI, each bumping `version` |
 
 ## Scope
@@ -62,8 +66,10 @@ It assumes:
 - `assigned_users` is folded into one assignee.
 
 It leaves out:
-- `link`, `unlink`, `delete`, the wiki and attachment guards, and `comments` (which skips the guard by design).
+- `link`, `unlink`, `delete`, the wiki and attachment guards, and `comments` (which skips the guard by design). `wiki update` passes `ownedAs` to `patchItem` too, but only the work flow is modeled.
 - Retries on 401 and 429. Taiga rejected those requests before applying them.
+
+A late refusal (`refusedLate`) can follow a points or priority write that already landed while you still held the task. The tool then reports an error even though those fields were saved. No rule covers that partial write.
 
 ## Real bug or modeling error
 
@@ -77,4 +83,4 @@ Replay the shortest path against the real code before you report it. Add a scena
 
 `CHANGED` means re-read that region against the table above. If the behavior changed, edit the matching action, then rerun. Move the sync commit forward only after the model matches the code at the new commit, and the rules match their expected results there. When a new step joins the flow, add its region to `REGIONS` in `coverage.mjs` and to the table above.
 
-Sync commit: `633a048`
+Sync commit: `70754a3`
