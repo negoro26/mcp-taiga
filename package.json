@@ -54,9 +54,9 @@
   "author": "negoro26",
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.1.0",
-    "@oxlint/plugins": "^1.85.0",
+    "@oxlint/plugins": "^1.95.0",
     "@types/node": "^26.6.2",
-    "oxlint": "^1.85.0",
+    "oxlint": "^1.95.0",
     "typescript": "^7.0.2"
   },
   "bugs": {
