@@ -29,7 +29,7 @@ Read every TLC result with `/skill:statechart`. Give it a scratch copy of the sp
 
 ## Known finding
 
-**Task points and priority.** Before these POSTs, the update op re-reads the task and re-checks ownership. A colleague can still reassign the task in the gap between that read and the POST. The POSTs carry no version, so Taiga saves them. The gap is one request wide, and the client cannot close it. Only pmdashboard can, by taking a version or checking ownership itself.
+**Task points and priority.** After the PATCH, the update op re-reads the task. If its `version` differs from the PATCH response (or from the first read, when nothing was patched), the op re-checks ownership. A colleague can still reassign the task in the gap between that re-read and the POSTs. The POSTs carry no version, so Taiga saves them. The gap is one request wide, and the client cannot close it. Only pmdashboard can, by taking a version or checking ownership itself.
 
 `npm test` ends with `node verify/ownership/replay.mjs`. It drives the built server against a fake Taiga on 127.0.0.1. Each scenario says when the colleague reassigns (after which GET of the task) and the expected outcome:
 - `refused`: the guard caught it.
@@ -47,11 +47,11 @@ The spec is `verify/ownership/WorkUpdateOwnership.tla`. Each action is one HTTP 
 | --- | --- |
 | `ResolveItem` | `resolveItem` in `src/taiga.ts`, called at the start of `if (op === 'update')` in `src/tools/work.ts` |
 | `AssertWritable` | `assertWritable` in `src/taiga.ts` (creator, or `assigned_to` / `assigned_users`) |
-| `RereadForAddon` | `resolveItem(internalKey, existing.id)` then `assertWritable` in the `hasTaskAddonWrite` branch of the update op; refusing ends in `refusedLate` |
-| `PostTaskAddon` | `post(API_ENDPOINTS.TASK_POINTS / TASK_PRIORITY)`, before the PATCH |
-| `PatchWithSeenVersion` | `patchItem` in `src/taiga.ts`, first PATCH with the version of the latest read (`base`) |
+| `PatchWithSeenVersion` | `patchItem` in `src/taiga.ts`, first PATCH with `existing.version`; on success `seen` becomes the PATCH response |
 | `RefetchAndRecheck` | `patchItem`, GET in the `status === 400` branch, then `assertWritable` when the caller passes `ownedAs` |
 | `PatchWithFreshVersion` | `patchItem`, second PATCH with `fresh.version` |
+| `RereadForAddon` | `resolveItem(internalKey, existing.id)` in the `hasTaskAddonWrite` branch, after the PATCH; skips `assertWritable` only when `current.version` equals `updated.version`; refusing ends in `refusedLate` |
+| `PostTaskAddon` | `post(API_ENDPOINTS.TASK_POINTS / TASK_PRIORITY)`, one action for both POSTs |
 | `HumanReassigns`, `HumanEditsOtherField` | a colleague in the Taiga UI, each bumping `version` |
 
 ## Scope
@@ -64,12 +64,13 @@ It assumes:
 - The creator never changes.
 - The agent's own payload does not reassign the item.
 - `assigned_users` is folded into one assignee.
+- Taiga always returns `version` on reads and on the PATCH response. The code re-checks when `version` is missing; the model does not model that case.
 
 It leaves out:
 - `link`, `unlink`, `delete`, the wiki and attachment guards, and `comments` (which skips the guard by design). `wiki update` passes `ownedAs` to `patchItem` too, but only the work flow is modeled.
 - Retries on 401 and 429. Taiga rejected those requests before applying them.
 
-A late refusal (`refusedLate`) can follow a points or priority write that already landed while you still held the task. The tool then reports an error even though those fields were saved. No rule covers that partial write.
+A late refusal (`refusedLate`) at the add-on re-read can follow a PATCH that already landed while you held the task. The tool then reports an error even though the PATCH fields were saved. No rule covers that partial write.
 
 ## Real bug or modeling error
 
@@ -83,4 +84,4 @@ Replay the shortest path against the real code before you report it. Add a scena
 
 `CHANGED` means re-read that region against the table above. If the behavior changed, edit the matching action, then rerun. Move the sync commit forward only after the model matches the code at the new commit, and the rules match their expected results there. When a new step joins the flow, add its region to `REGIONS` in `coverage.mjs` and to the table above.
 
-Sync commit: `70754a3`
+Sync commit: `031a894`
